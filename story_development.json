@@ -15,7 +15,7 @@
     },
     "cliPrompt" : "./agents/prompts/story_development_prompt.md",
     "cliCommands" : [
-      "./agents/scripts/run-agent.sh"
+      "./agents/scripts/simple-test.sh"
     ],
     "outputType" : "none",
     "ticketContextDepth" : 1,
