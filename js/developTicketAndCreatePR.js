@@ -364,6 +364,16 @@ function action(params) {
         console.log('Processing development workflow for ticket:', ticketKey);
         console.log('Ticket summary:', ticketSummary);
 
+        // DEBUG: Post start comment to track execution in CI/CD logs
+        try {
+            jira_post_comment({
+                key: ticketKey,
+                comment: 'h4. PostJSAction Started\n\nTicket: ' + ticketKey + '\nSummary: ' + ticketSummary + '\nResponse length: ' + (developmentSummary ? developmentSummary.length : 0) + ' chars'
+            });
+        } catch (e) {
+            console.warn('Failed to post start comment:', e);
+        }
+
         // Configure git author
         if (!configureGitAuthor()) {
             const error = 'Failed to configure git author';
@@ -385,6 +395,16 @@ function action(params) {
             return { success: false, error: error };
         }
         console.log('Using current branch:', branchName);
+
+        // DEBUG: Post branch info comment
+        try {
+            jira_post_comment({
+                key: ticketKey,
+                comment: 'h4. Git Branch Determined\n\nBranch: {code}' + branchName + '{code}\nProceeding with git operations...'
+            });
+        } catch (e) {
+            console.warn('Failed to post branch comment:', e);
+        }
 
         // Prepare commit message
         const commitMessage = ticketKey + ' ' + ticketSummary;
@@ -414,6 +434,16 @@ function action(params) {
                 };
             }
             console.log('Using outputs/response.md as PR body (' + responseContent.length + ' characters)');
+
+            // DEBUG: Post git operations success comment
+            try {
+                jira_post_comment({
+                    key: ticketKey,
+                    comment: 'h4. Git Operations Completed\n\nBranch: {code}' + branchName + '{code}\nChanges committed and pushed.\nProceeding with PR creation...'
+                });
+            } catch (e) {
+                console.warn('Failed to post git success comment:', e);
+            }
         } catch (error) {
             console.error('Failed to read outputs/response.md:', error);
             postErrorCommentToJira(ticketKey, 'PR Body Preparation', error.toString());
