@@ -82,8 +82,10 @@ function checkoutBranch(ticketKey) {
 
 function action(params) {
     try {
-        // Handle both workflow and standalone dmtools execution
-        var actualParams = params.jobParams || params;
+        // Handle both Teammate workflow and standalone dmtools execution
+        // - Teammate workflow: params.inputFolderPath exists directly
+        // - Standalone dmtools (JSRunner): params.jobParams.inputFolderPath
+        var actualParams = params.inputFolderPath ? params : (params.jobParams || params);
 
         var folder = actualParams.inputFolderPath;
         var ticketKey = folder.split('/').pop();
