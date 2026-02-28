@@ -202,7 +202,7 @@ function action(params) {
             return { success: false, error: 'No test result JSON found' };
         }
 
-        const passed = result.status === 'passed';
+        const passed = (result.status || '').toLowerCase() === 'passed';
         console.log('Re-run result:', result.status);
 
         // Step 2: Configure git + commit/push testing/ only

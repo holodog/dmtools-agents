@@ -186,7 +186,7 @@ function action(params) {
             return { success: false, error: 'No test result JSON found' };
         }
 
-        const passed = result.status === 'passed';
+        const passed = (result.status || '').toLowerCase() === 'passed';
 
         // Step 2: Configure git author
         try {
