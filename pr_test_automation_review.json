@@ -16,7 +16,7 @@
     },
     "cliPrompt" : "./agents/prompts/pr_test_automation_review_prompt.md",
     "cliCommands" : [
-      "./agents/scripts/run-agent.sh --skip"
+      "./agents/scripts/run-agent.sh"
     ],
     "outputType" : "none",
     "ticketContextDepth" : 1,
