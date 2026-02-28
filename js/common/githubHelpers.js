@@ -260,6 +260,78 @@ function fetchDiscussionsAndRawData(workspace, repository, pullRequestId) {
 }
 
 /**
+ * Detect merge conflicts between the current branch and origin/{baseBranch}.
+ * Attempts `git merge --no-commit --no-ff`; if conflicts are found, writes
+ * `merge_conflicts.md` to the input folder and leaves the working directory
+ * in the conflicted merge state so the rework agent can resolve them.
+ *
+ * `checkoutPRBranch` already runs `git fetch origin --prune`, so the remote
+ * base branch ref is up to date before this is called.
+ *
+ * @param {string} baseBranch  - base branch name (e.g. "main")
+ * @param {string} inputFolder - input/{ticketKey} path
+ * @returns {string[]} list of conflicting file paths (empty when clean)
+ */
+function detectMergeConflicts(baseBranch, inputFolder) {
+    try {
+        console.log('Checking for merge conflicts with origin/' + baseBranch + '...');
+
+        // Attempt the merge without committing
+        cli_execute_command({ command: 'git merge origin/' + baseBranch + ' --no-commit --no-ff' });
+
+        // If we reach here the merge is clean — staged but not committed
+        console.log('No merge conflicts — base branch changes staged');
+        return [];
+
+    } catch (mergeError) {
+        // git merge exits non-zero when there are unresolved conflicts
+        try {
+            var statusRaw = cleanCommandOutput(
+                cli_execute_command({ command: 'git status --short' }) || ''
+            );
+
+            // Lines prefixed UU, AA, DD, AU, UA, DU, UD are conflict markers
+            var conflictLines = statusRaw.split('\n').filter(function(line) {
+                return /^(UU|AA|DD|AU|UA|DU|UD) /.test(line.trim());
+            });
+
+            if (conflictLines.length === 0) {
+                // Not a conflict error — abort and move on
+                try { cli_execute_command({ command: 'git merge --abort' }); } catch (e) {}
+                console.warn('Merge failed (non-conflict reason):', mergeError.message || mergeError);
+                return [];
+            }
+
+            var conflictFiles = conflictLines.map(function(l) {
+                return l.trim().substring(3).trim();
+            });
+            console.warn('⚠️ Merge conflicts in ' + conflictFiles.length + ' file(s):', conflictFiles.join(', '));
+
+            var md = '# ⚠️ Merge Conflicts — Resolve Before Rework\n\n';
+            md += 'This branch has conflicts with `' + baseBranch + '`. ';
+            md += conflictFiles.length + ' file(s) contain conflict markers:\n\n';
+            conflictFiles.forEach(function(f) { md += '- `' + f + '`\n'; });
+            md += '\n## Resolution Steps\n\n';
+            md += '1. Open each conflicting file and resolve the `<<<<<<<` / `=======` / `>>>>>>>` markers\n';
+            md += '2. Stage each resolved file: `git add <file>`\n';
+            md += '3. Once all conflicts are resolved, proceed with fixes from `pr_discussions.md`\n\n';
+            md += '**Do NOT run `git commit` or `git merge --abort`** — the commit and push are handled automatically.\n';
+
+            file_write({ path: inputFolder + '/merge_conflicts.md', content: md });
+            console.log('✅ Wrote merge_conflicts.md');
+
+            // Leave the working directory in the conflicted merge state so the agent can resolve it
+            return conflictFiles;
+
+        } catch (statusError) {
+            console.warn('Could not determine merge state after conflict:', statusError);
+            try { cli_execute_command({ command: 'git merge --abort' }); } catch (e) {}
+            return [];
+        }
+    }
+}
+
+/**
  * Write PR context files to input folder.
  * Writes: pr_info.md, pr_diff.txt, pr_discussions.md, pr_discussions_raw.json
  *
@@ -318,5 +390,6 @@ module.exports = {
     checkoutPRBranch: checkoutPRBranch,
     getPRDiff: getPRDiff,
     fetchDiscussionsAndRawData: fetchDiscussionsAndRawData,
-    writePRContext: writePRContext
+    writePRContext: writePRContext,
+    detectMergeConflicts: detectMergeConflicts
 };

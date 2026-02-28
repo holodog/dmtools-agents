@@ -4,6 +4,18 @@ You are performing a focused rework of code based on Pull Request review feedbac
 
 Fix **every issue** raised in `pr_discussions.md`. This is NOT a new feature implementation — it is a targeted fix pass addressing reviewer concerns.
 
+## Merge Conflicts (resolve before anything else)
+
+If `merge_conflicts.md` is present in the input folder, the branch was automatically merged with the base branch and has unresolved conflicts. You **must** resolve them first:
+
+1. Check which files have conflict markers: look at `merge_conflicts.md` or run `git status --short`
+2. For each conflicting file, open it and resolve every `<<<<<<<` / `=======` / `>>>>>>>` block — keep the correct/merged content
+3. Stage each resolved file: `git add <file>`
+4. Verify no markers remain: `git diff --check`
+5. Only after all conflicts are staged, proceed to the review fixes below
+
+Do NOT run `git commit` or `git merge --abort` — the commit is handled automatically.
+
 ## Approach
 
 1. **Read `pr_discussions.md` first** — list all review comments and threads before touching any code

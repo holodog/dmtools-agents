@@ -72,6 +72,10 @@ function action(params) {
 
         // Step 5: Diff + discussions
         const baseBranch = prDetails.base ? prDetails.base.ref : 'main';
+
+        // Step 4.5: Merge base branch and detect conflicts
+        const conflictFiles = gh.detectMergeConflicts(baseBranch, inputFolder);
+
         const diff = gh.getPRDiff(baseBranch, branchName);
 
         console.log('Fetching PR discussions...');
@@ -89,14 +93,21 @@ function action(params) {
 
         // Step 8: Jira comment
         try {
-            jira_post_comment({
-                key: ticketKey,
-                comment: 'h3. 🔧 Automated Test Rework Started\n\n' +
-                    '*Pull Request*: [PR #' + prDetails.number + '|' + prDetails.html_url + ']\n' +
-                    '*Branch*: {code}' + branchName + '{code}\n\n' +
-                    'AI Teammate is fixing test code issues raised in the review.\n\n' +
-                    '_Results will be posted shortly..._'
-            });
+            var jiraComment = 'h3. 🔧 Automated Test Rework Started\n\n' +
+                '*Pull Request*: [PR #' + prDetails.number + '|' + prDetails.html_url + ']\n' +
+                '*Branch*: {code}' + branchName + '{code}\n\n';
+
+            if (conflictFiles.length > 0) {
+                jiraComment += '{panel:bgColor=#FFEBE6|borderColor=#DE350B}' +
+                    '⚠️ *Merge conflicts detected* — ' + conflictFiles.length + ' file(s) must be resolved:\n' +
+                    conflictFiles.map(function(f) { return '* {code}' + f + '{code}'; }).join('\n') +
+                    '{panel}\n\n';
+            }
+
+            jiraComment += 'AI Teammate is fixing test code issues raised in the review.\n\n' +
+                '_Results will be posted shortly..._';
+
+            jira_post_comment({ key: ticketKey, comment: jiraComment });
         } catch (e) {
             console.warn('Failed to post Jira comment:', e);
         }
