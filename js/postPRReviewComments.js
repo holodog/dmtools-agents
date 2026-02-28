@@ -57,12 +57,18 @@ function readMarkdownFile(filePath) {
  */
 function getGitHubRepoInfo() {
     try {
-        const remoteUrl = cli_execute_command({
+        const rawOutput = cli_execute_command({
             command: 'git config --get remote.origin.url'
         }) || '';
 
+        // cli_execute_command may append shell wrapper lines (Script done, COMMAND_EXIT_CODE=...)
+        // Take only the first non-empty line that looks like a URL
+        const remoteUrl = rawOutput.split('\n')
+            .map(function(l) { return l.trim(); })
+            .filter(function(l) { return l.indexOf('github.com') !== -1; })[0] || '';
+
         // Parse GitHub URL (https://github.com/owner/repo.git or git@github.com:owner/repo.git)
-        const match = remoteUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
+        const match = remoteUrl.match(/github\.com[:/]([^/]+)\/([^/.?\s]+)/);
         if (!match) {
             console.error('Could not parse GitHub URL from:', remoteUrl);
             return null;
