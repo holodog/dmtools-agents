@@ -84,6 +84,24 @@ function getPRNumber(params, ticketKey, repoInfo) {
     return { prNumber: prNumber, prUrl: prUrl };
 }
 
+function resolveApprovedThreads(repoInfo, prNumber, resolvedThreadIds) {
+    if (!resolvedThreadIds || resolvedThreadIds.length === 0) return;
+    console.log('Resolving ' + resolvedThreadIds.length + ' fixed review thread(s)...');
+    resolvedThreadIds.forEach(function(threadId) {
+        try {
+            github_resolve_pr_thread({
+                workspace: repoInfo.owner,
+                repository: repoInfo.repo,
+                pullRequestId: String(prNumber),
+                threadId: threadId
+            });
+            console.log('✅ Resolved thread', threadId);
+        } catch (e) {
+            console.warn('Failed to resolve thread ' + threadId + ':', e.message || e);
+        }
+    });
+}
+
 function postInlineComment(repoInfo, prNumber, inlineComment) {
     try {
         const comment = readFile(inlineComment.comment);
@@ -161,6 +179,9 @@ function action(params) {
                     postInlineComment(repoInfo, prNumber, ic);
                 });
             }
+
+            // Resolve threads that were fully fixed in this rework
+            resolveApprovedThreads(repoInfo, prNumber, reviewData.resolvedThreadIds);
 
             // Merge if approved
             if (isApproved) {

@@ -5,6 +5,7 @@ User request is in the 'input' folder. Read all files there.
 2. `pr_info.md` — PR metadata and current test result (PASSED or FAILED)
 3. `pr_diff.txt` — all code changes in this PR
 4. `pr_discussions.md` — previous review comments (if any)
+5. `pr_discussions_raw.json` *(if present)* — previous thread IDs; populate `resolvedThreadIds` in `pr_review.json` with `threadId` values for any prior thread that is **fully fixed** in this diff
 
 Your task is to review the test automation PR — not the feature code. Focus on whether the test correctly implements the Test Case and follows the testing architecture.
 

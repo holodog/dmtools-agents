@@ -11,6 +11,7 @@ In addition to outputs/response.md (Jira-formatted review), you MUST generate:
   "prNumber": null,
   "prUrl": null,
   "generalComment": "outputs/pr_review_general.md",
+  "resolvedThreadIds": [],
   "inlineComments": [
     {
       "file": "path/to/file.js",
@@ -36,6 +37,7 @@ In addition to outputs/response.md (Jira-formatted review), you MUST generate:
 - **prNumber**: Leave null (will be filled by JS action)
 - **prUrl**: Leave null (will be filled by JS action)
 - **generalComment**: Path to markdown file with overall PR review comment (GitHub markdown)
+- **resolvedThreadIds**: Array of GraphQL thread node IDs (from `pr_discussions_raw.json` → `threads[i].threadId`) that were **fully fixed** in this rework and should be marked as resolved on GitHub. Leave empty `[]` on first review or when no prior threads were fixed. Only include threads whose fix you verified in the diff — do NOT resolve threads that are still open or only partially addressed.
 - **inlineComments**: Array of inline code review comments
   - **file**: Relative path to file from repo root
   - **line**: Line number to comment on

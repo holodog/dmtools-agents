@@ -210,6 +210,31 @@ function postInlineComment(workspace, repository, pullRequestId, inlineComment) 
 }
 
 /**
+ * Resolve previously-raised review threads that were fully fixed in this rework.
+ * @param {string} workspace
+ * @param {string} repository
+ * @param {number} pullRequestId
+ * @param {string[]} resolvedThreadIds - GraphQL node IDs from pr_review.json.resolvedThreadIds
+ */
+function resolveApprovedThreads(workspace, repository, pullRequestId, resolvedThreadIds) {
+    if (!resolvedThreadIds || resolvedThreadIds.length === 0) return;
+    console.log('Resolving ' + resolvedThreadIds.length + ' fixed review thread(s)...');
+    resolvedThreadIds.forEach(function(threadId) {
+        try {
+            github_resolve_pr_thread({
+                workspace: workspace,
+                repository: repository,
+                pullRequestId: String(pullRequestId),
+                threadId: threadId
+            });
+            console.log('✅ Resolved thread', threadId);
+        } catch (e) {
+            console.warn('Failed to resolve thread ' + threadId + ':', e.message || e);
+        }
+    });
+}
+
+/**
  * Merge GitHub PR using DMTools MCP tool github_merge_pr
  * @param {string} workspace - GitHub owner/organization
  * @param {string} repository - GitHub repository name
@@ -392,6 +417,9 @@ function action(params) {
                     postInlineComment(repoInfo.owner, repoInfo.repo, prNumber, inlineComment);
                 });
             }
+
+            // Resolve threads that were fully fixed in this rework
+            resolveApprovedThreads(repoInfo.owner, repoInfo.repo, prNumber, reviewData.resolvedThreadIds);
 
             console.log('✅ Posted all review comments to GitHub PR');
 
