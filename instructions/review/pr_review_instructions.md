@@ -6,6 +6,7 @@ Read PR context from input folder which contains:
   - pr_diff.txt: Complete git diff of all changes
   - pr_files.txt: List of all modified files
   - pr_discussions.md: *(if present)* Full history of previous review comments and inline threads
+  - pr_discussions_raw.json: *(if present)* Structured thread data with IDs — used to populate `resolvedThreadIds`
 
 ## ⚠️ Repeated Review Notice
 

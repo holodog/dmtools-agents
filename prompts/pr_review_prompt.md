@@ -7,6 +7,7 @@ The input folder contains all necessary context:
 - `pr_diff.txt`: Complete diff of all code changes
 - `pr_files.txt`: List of modified files
 - `pr_discussions.md` *(if present)*: Previous review comments — indicates this is a repeated review
+- `pr_discussions_raw.json` *(if present)*: Structured thread data with IDs — for each thread fully fixed in this diff, add its `threadId` to `resolvedThreadIds` in `pr_review.json`
 
 # Your Mission
 Conduct a thorough security-focused code review prioritizing:

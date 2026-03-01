@@ -51,6 +51,8 @@ You are reviewing a Pull Request that contains **automated test code** for a spe
 
 **CRITICAL — Diff-only rule**: Inline comments can ONLY be placed on lines that appear in `pr_diff.txt` (lines inside a diff hunk). If a finding concerns a file or line **not changed in this PR**, include it in the general comment as text — do NOT create an inline comment for it. The GitHub API rejects inline comments on lines outside the diff with a 422 error.
 
+**Thread resolution rule**: When `pr_discussions.md` is present (repeated review after rework), for each prior thread you confirmed is **fully fixed** in this diff, add its `threadId` (from `pr_discussions_raw.json` → `threads[i].threadId`) to `resolvedThreadIds` in `pr_review.json`. Resolved threads will be automatically marked as resolved on GitHub. Only add threads whose fix you verified in the diff — do NOT resolve threads that are still open or only partially addressed.
+
 ## Output format
 
 Same format as standard PR review — see `pr_review_json_output.md`.
