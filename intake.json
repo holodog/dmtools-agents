@@ -25,6 +25,7 @@
     "cleanupInputFolder": true,
     "attachResponseAsFile" : false,
     "skipAIProcessing" : true,
+    "alwaysPostComments": true,
     "preJSAction" : "agents/js/checkWipLabel.js",
     "preCliJSAction" : "agents/js/fetchEpicsToInput.js",
     "postJSAction" : "agents/js/createIntakeTickets.js",

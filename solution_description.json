@@ -37,6 +37,7 @@
     "ticketContextDepth" : 0,
     "attachResponseAsFile" : false,
     "skipAIProcessing" : true,
+    "alwaysPostComments": true,
     "preJSAction" : "agents/js/checkWipLabel.js",
     "postJSAction" : "agents/js/enhanceSolutionDesignDescriptionAndAssess.js",
     "inputJql" : "key in (JD-9)"

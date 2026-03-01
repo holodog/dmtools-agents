@@ -29,6 +29,7 @@
     "ticketContextDepth" : 1,
     "attachResponseAsFile" : false,
     "skipAIProcessing" : true,
+    "alwaysPostComments": true,
     "postJSAction" : "agents/js/closeQuestionTicket.js",
     "inputJql" : "key = JD-95"
   }

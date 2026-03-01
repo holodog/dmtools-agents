@@ -29,6 +29,7 @@
     "ticketContextDepth" : 0,
     "attachResponseAsFile" : false,
     "skipAIProcessing" : true,
+    "alwaysPostComments": true,
     "preCliJSAction" : "agents/js/fetchQuestionsToInput.js",
     "postJSAction" : "agents/js/createQuestionsAndAssignForReview.js",
     "inputJql" : "key = JD-82"

@@ -32,6 +32,7 @@
     "preCliJSAction" : "agents/js/fetchQuestionsToInput.js",
     "cleanupInputFolder": false,
     "skipAIProcessing" : true,
+    "alwaysPostComments": true,
     "postJSAction" : "agents/js/assignForSolutionArchitecture.js",
     "inputJql" : "key = JD-82"
   }

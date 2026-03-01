@@ -31,6 +31,7 @@
     "attachResponseAsFile" : false,
     "preCliJSAction" : "agents/js/fetchQuestionsToInput.js",
     "skipAIProcessing" : true,
+    "alwaysPostComments": true,
     "postJSAction" : "agents/assignForReview.js",
     "inputJql" : "key = TP-397"
   }

@@ -22,6 +22,7 @@
     "attachResponseAsFile" : false,
     "cleanupInputFolder": false,
     "skipAIProcessing" : true,
+    "alwaysPostComments": true,
     "preJSAction" : "agents/js/checkWipLabel.js",
     "preCliJSAction" : "agents/js/preCliReworkSetup.js",
     "postJSAction" : "agents/js/pushReworkChanges.js",
