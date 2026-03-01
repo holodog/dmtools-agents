@@ -256,8 +256,28 @@ function mergePR(workspace, repository, pullRequestId) {
         return true;
 
     } catch (error) {
-        console.error('Failed to merge PR #' + pullRequestId + ':', error);
-        return false;
+        console.warn('First merge attempt failed (likely conflict) — trying auto-update branch:', error);
+
+        // Auto-fix: merge latest main into the branch and retry
+        try {
+            cli_execute_command({ command: 'git fetch origin' });
+            cli_execute_command({ command: 'git merge origin/main --no-edit' });
+            cli_execute_command({ command: 'git push origin HEAD' });
+            console.log('✅ Auto-merged main into branch — retrying PR merge');
+
+            github_merge_pr({
+                workspace: workspace,
+                repository: repository,
+                pullRequestId: String(pullRequestId),
+                mergeMethod: 'squash'
+            });
+
+            console.log('✅ PR #' + pullRequestId + ' merged after auto-update');
+            return true;
+        } catch (retryErr) {
+            console.error('Auto-update + retry also failed — real conflict needs rework:', retryErr);
+            return false;
+        }
     }
 }
 

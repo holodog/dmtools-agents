@@ -196,7 +196,26 @@ function action(params) {
                     mergeSucceeded = true;
                     console.log('✅ PR #' + prNumber + ' merged');
                 } catch (e) {
-                    console.warn('Failed to merge PR (likely conflict):', e);
+                    console.warn('First merge attempt failed (likely conflict) — trying auto-update branch:', e);
+
+                    // Auto-fix: merge latest main into the test branch and retry
+                    try {
+                        cli_execute_command({ command: 'git fetch origin' });
+                        cli_execute_command({ command: 'git merge origin/main --no-edit' });
+                        cli_execute_command({ command: 'git push origin HEAD' });
+                        console.log('✅ Auto-merged main into branch — retrying PR merge');
+
+                        github_merge_pr({
+                            workspace: repoInfo.owner,
+                            repository: repoInfo.repo,
+                            pullRequestId: String(prNumber),
+                            mergeMethod: 'squash'
+                        });
+                        mergeSucceeded = true;
+                        console.log('✅ PR #' + prNumber + ' merged after auto-update');
+                    } catch (retryErr) {
+                        console.warn('Auto-update + retry also failed — real conflict needs rework:', retryErr);
+                    }
                 }
             }
         } else {
