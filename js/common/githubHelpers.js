@@ -276,6 +276,16 @@ function detectMergeConflicts(baseBranch, inputFolder) {
     try {
         console.log('Checking for merge conflicts with origin/' + baseBranch + '...');
 
+        // Unshallow first so git merge has full history for a correct merge base.
+        // GitHub Actions checks out with --depth=1 by default; without this,
+        // 'git merge --no-commit' may report clean even when real conflicts exist.
+        try {
+            cli_execute_command({ command: 'git fetch --unshallow' });
+            console.log('Unshallowed repository for full merge base detection');
+        } catch (e) {
+            // Already a complete repo — harmless, continue
+        }
+
         // Attempt the merge without committing
         cli_execute_command({ command: 'git merge origin/' + baseBranch + ' --no-commit --no-ff' });
 

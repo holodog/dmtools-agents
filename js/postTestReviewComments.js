@@ -200,6 +200,7 @@ function action(params) {
 
                     // Auto-fix: merge latest main into the test branch and retry
                     try {
+                        try { cli_execute_command({ command: 'git fetch --unshallow' }); } catch (e) {}
                         cli_execute_command({ command: 'git fetch origin' });
                         cli_execute_command({ command: 'git merge origin/main --no-edit' });
                         cli_execute_command({ command: 'git push origin HEAD' });
