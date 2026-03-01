@@ -1,0 +1,16 @@
+{
+  "name" : "JSRunner",
+  "params" : {
+    "script" : "agents/js/smAgent.js",
+    "rules"  : [
+      {
+        "description" : "Merged Stories → Ready For Testing + generate test cases",
+        "jql"         : "project = MYTUBE AND issuetype in ('Story') AND status in ('Merged')",
+        "targetStatus": "Ready For Testing",
+        "configFile"  : "agents/test_cases_generator.json",
+        "skipIfLabel" : "sm_test_cases_triggered",
+        "addLabel"    : "sm_test_cases_triggered"
+      }
+    ]
+  }
+}

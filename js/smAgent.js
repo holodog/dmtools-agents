@@ -1,47 +1,59 @@
 /**
  * SM Agent — Scrum Master automation (JSRunner)
  *
- * Generic script that finds Jira tickets by JQL, optionally transitions their
- * status, and triggers an ai-teammate GitHub Actions workflow for each one.
+ * Reads an array of rules from params.rules (defined in agents/sm.json)
+ * and for each rule:
+ *   1. Queries Jira by rule.jql
+ *   2. Optionally transitions each ticket to rule.targetStatus
+ *   3. Triggers an ai-teammate GitHub Actions workflow for each ticket
  *
- * Configured entirely through the JSON config file — no code changes needed
- * when adding new SM automation scenarios.
- *
- * Required config params:
- *   params.inputJql       — JQL to find tickets
- *   params.configFile     — agents/*.json to pass as config_file workflow input
- *
- * Optional config params:
- *   params.targetStatus   — Jira status to transition each ticket to before triggering
- *   params.workflowFile   — GitHub Actions workflow file (default: ai-teammate.yml)
- *   params.workflowRef    — git ref to dispatch on (default: main)
- *   params.skipIfLabel    — skip ticket if it already has this label (idempotency guard)
- *   params.addLabel       — add this label after triggering (idempotency marker)
+ * Rule fields:
+ *   jql          (required) — JQL to find tickets
+ *   configFile   (required) — agents/*.json to pass as config_file workflow input
+ *   description  (optional) — human-readable label shown in logs
+ *   targetStatus (optional) — Jira status to transition tickets to before triggering
+ *   workflowFile (optional) — GitHub Actions workflow file  (default: ai-teammate.yml)
+ *   workflowRef  (optional) — git ref for dispatch           (default: main)
+ *   skipIfLabel  (optional) — skip ticket if it already has this label (idempotency)
+ *   addLabel     (optional) — add this label after triggering (idempotency marker)
  */
 
-const { STATUSES } = require('./config.js');
-const gh = require('./common/githubHelpers.js');
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-/**
- * Build URL-encoded agent config for the encoded_config workflow input.
- * Passes minimal params: just the inputJql pointing at this specific ticket.
- */
-function buildEncodedConfig(ticketKey) {
-    const config = JSON.stringify({
-        params: {
-            inputJql: 'key = ' + ticketKey
+function getGitHubRepoInfo() {
+    try {
+        var remoteUrl = (cli_execute_command({ command: 'git config --get remote.origin.url' }) || '').trim();
+        // strip script wrapper lines
+        remoteUrl = remoteUrl.split('\n').filter(function(l) {
+            return l.indexOf('Script started') === -1 &&
+                   l.indexOf('Script done') === -1 &&
+                   l.indexOf('COMMAND=') === -1 &&
+                   l.indexOf('COMMAND_EXIT_CODE=') === -1;
+        }).join('\n').trim();
+        var match = remoteUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
+        if (!match) {
+            console.error('Could not parse GitHub URL from: ' + remoteUrl);
+            return null;
         }
-    });
-    return encodeURIComponent(config);
+        var owner = match[1];
+        var repo  = match[2].replace('.git', '');
+        console.log('GitHub repo: ' + owner + '/' + repo);
+        return { owner: owner, repo: repo };
+    } catch (e) {
+        console.error('Failed to get GitHub repo info: ' + (e.message || e));
+        return null;
+    }
 }
 
-/**
- * Trigger ai-teammate workflow_dispatch for a single ticket.
- */
-function triggerWorkflow(repoInfo, ticketKey, configFile, workflowFile, workflowRef) {
-    const encodedConfig = buildEncodedConfig(ticketKey);
+function buildEncodedConfig(ticketKey) {
+    return encodeURIComponent(JSON.stringify({
+        params: { inputJql: 'key = ' + ticketKey }
+    }));
+}
+
+function triggerWorkflow(repoInfo, ticketKey, rule) {
+    var workflowFile = rule.workflowFile || 'ai-teammate.yml';
+    var workflowRef  = rule.workflowRef  || 'main';
     try {
         github_trigger_workflow(
             repoInfo.owner,
@@ -49,120 +61,118 @@ function triggerWorkflow(repoInfo, ticketKey, configFile, workflowFile, workflow
             workflowFile,
             JSON.stringify({
                 concurrency_key: ticketKey,
-                config_file:     configFile,
-                encoded_config:  encodedConfig
+                config_file:     rule.configFile,
+                encoded_config:  buildEncodedConfig(ticketKey)
             })
         );
-        console.log('✅ Triggered ' + workflowFile + ' for ' + ticketKey);
+        console.log('  ✅ Triggered ' + workflowFile + '@' + workflowRef + ' for ' + ticketKey);
         return true;
     } catch (e) {
-        console.warn('⚠️  Failed to trigger workflow for ' + ticketKey + ': ' + (e.message || e));
+        console.warn('  ⚠️  Workflow trigger failed for ' + ticketKey + ': ' + (e.message || e));
         return false;
     }
 }
 
-/**
- * Move ticket to the given Jira status (soft-fail — logs warning on error).
- */
 function moveStatus(ticketKey, targetStatus) {
     try {
         jira_move_to_status({ key: ticketKey, statusName: targetStatus });
-        console.log('✅ Moved ' + ticketKey + ' → ' + targetStatus);
+        console.log('  ✅ ' + ticketKey + ' → ' + targetStatus);
     } catch (e) {
-        console.warn('⚠️  Could not move ' + ticketKey + ': ' + (e.message || e));
+        console.warn('  ⚠️  Status transition failed for ' + ticketKey + ': ' + (e.message || e));
     }
 }
 
-/**
- * Check if the ticket already has a given label.
- */
 function hasLabel(ticket, label) {
     if (!label) return false;
     var labels = (ticket.fields && ticket.fields.labels) ? ticket.fields.labels : [];
     return labels.indexOf(label) !== -1;
 }
 
-// ─── Main ────────────────────────────────────────────────────────────────────
+// ─── Rule processor ───────────────────────────────────────────────────────────
 
-function action(params) {
-    var inputJql     = params.inputJql;
-    var targetStatus = params.targetStatus;
-    var configFile   = params.configFile;
-    var workflowFile = params.workflowFile  || 'ai-teammate.yml';
-    var workflowRef  = params.workflowRef   || 'main';
-    var skipIfLabel  = params.skipIfLabel;
-    var addLabel     = params.addLabel;
+function processRule(rule, repoInfo, ruleIndex) {
+    var label = rule.description || ('Rule #' + (ruleIndex + 1));
+    console.log('\n══ ' + label + ' ══');
+    console.log('   JQL: ' + rule.jql);
 
-    if (!inputJql) {
-        console.error('❌ inputJql is required');
-        return { success: false, error: 'inputJql is required' };
-    }
-    if (!configFile) {
-        console.error('❌ configFile is required');
-        return { success: false, error: 'configFile is required' };
+    if (!rule.jql || !rule.configFile) {
+        console.warn('  ⚠️  Skipping rule — jql and configFile are required');
+        return { processed: 0, skipped: 0 };
     }
 
-    var repoInfo = gh.getGitHubRepoInfo();
-    if (!repoInfo) {
-        console.error('❌ Could not detect GitHub repo info from remote URL');
-        return { success: false, error: 'No GitHub repo info' };
-    }
-
-    console.log('SM Agent — repo:',  repoInfo.owner + '/' + repoInfo.repo);
-    console.log('SM Agent — JQL:',   inputJql);
-    console.log('SM Agent — workflow:', workflowFile + ' @ ' + workflowRef);
-
-    // ── Query tickets ────────────────────────────────────────────────────────
     var tickets = [];
     try {
-        tickets = jira_search_by_jql({ jql: inputJql, limit: 50 }) || [];
+        tickets = jira_search_by_jql({ jql: rule.jql, limit: 50 }) || [];
     } catch (e) {
-        console.error('❌ Jira query failed:', e.message || e);
-        return { success: false, error: String(e) };
+        console.error('  ❌ Jira query failed: ' + (e.message || e));
+        return { processed: 0, skipped: 0 };
     }
 
     if (tickets.length === 0) {
-        console.log('No tickets found — nothing to do.');
-        return { success: true, processed: 0, skipped: 0 };
+        console.log('  No tickets found.');
+        return { processed: 0, skipped: 0 };
     }
 
-    console.log('Found ' + tickets.length + ' ticket(s)');
+    console.log('  Found ' + tickets.length + ' ticket(s)');
 
-    // ── Process each ticket ──────────────────────────────────────────────────
     var processed = 0;
     var skipped   = 0;
 
     tickets.forEach(function(ticket) {
         var key = ticket.key;
-        console.log('\n--- ' + key + ' ---');
 
-        // Idempotency: skip if already tagged
-        if (skipIfLabel && hasLabel(ticket, skipIfLabel)) {
-            console.log('⏭️  Skipping ' + key + ' (already has label: ' + skipIfLabel + ')');
+        if (rule.skipIfLabel && hasLabel(ticket, rule.skipIfLabel)) {
+            console.log('  ⏭️  ' + key + ' skipped (label: ' + rule.skipIfLabel + ')');
             skipped++;
             return;
         }
 
-        // Transition status
-        if (targetStatus) {
-            moveStatus(key, targetStatus);
+        if (rule.targetStatus) {
+            moveStatus(key, rule.targetStatus);
         }
 
-        // Trigger workflow
-        var triggered = triggerWorkflow(repoInfo, key, configFile, workflowFile, workflowRef);
+        var triggered = triggerWorkflow(repoInfo, key, rule);
 
-        // Mark as processed
-        if (triggered && addLabel) {
-            try {
-                jira_add_label({ key: key, label: addLabel });
-            } catch (e) { /* non-critical */ }
+        if (triggered && rule.addLabel) {
+            try { jira_add_label({ key: key, label: rule.addLabel }); } catch (e) {}
         }
 
         if (triggered) processed++;
     });
 
-    console.log('\nSM Agent done — processed: ' + processed + ', skipped: ' + skipped);
-    return { success: true, processed: processed, skipped: skipped };
+    return { processed: processed, skipped: skipped };
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+function action(params) {
+    var rules = params.rules;
+
+    if (!rules || rules.length === 0) {
+        console.error('❌ No rules defined in params.rules');
+        return { success: false, error: 'No rules defined' };
+    }
+
+    var repoInfo = getGitHubRepoInfo();
+    if (!repoInfo) {
+        console.error('❌ Could not detect GitHub repo info');
+        return { success: false, error: 'No GitHub repo info' };
+    }
+
+    console.log('SM Agent — ' + repoInfo.owner + '/' + repoInfo.repo);
+    console.log('Rules to process: ' + rules.length);
+
+    var totalProcessed = 0;
+    var totalSkipped   = 0;
+
+    rules.forEach(function(rule, i) {
+        var result = processRule(rule, repoInfo, i);
+        totalProcessed += result.processed;
+        totalSkipped   += result.skipped;
+    });
+
+    console.log('\n══ SM Agent complete — processed: ' + totalProcessed + ', skipped: ' + totalSkipped + ' ══');
+    return { success: true, processed: totalProcessed, skipped: totalSkipped };
 }
 
 if (typeof module !== 'undefined' && module.exports) {
