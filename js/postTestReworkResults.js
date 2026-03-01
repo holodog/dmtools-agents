@@ -289,7 +289,7 @@ function action(params) {
         } catch (e) {}
 
         // Step 8: Remove SM idempotency label (via customParams)
-        const customParams = params.customParams;
+        const customParams = params.jobParams && params.jobParams.customParams;
         const removeLabel = customParams && customParams.removeLabel;
         if (removeLabel) {
             try {
