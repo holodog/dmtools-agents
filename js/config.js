@@ -29,7 +29,8 @@ const STATUSES = {
     FAILED: 'Failed',                                // Test automation passed review
     PASSED: 'Passed',                                // Test automation passed review
     IN_REVIEW_PASSED: 'In Review - Passed',          // Test ran and passed, awaiting code review
-    IN_REVIEW_FAILED: 'In Review - Failed'           // Test ran and failed, awaiting code review
+    IN_REVIEW_FAILED: 'In Review - Failed',          // Test ran and failed, awaiting code review
+    IN_TESTING: 'In Testing'                         // Test cases generated, automation in progress
 };
 
 // Jira Priorities
