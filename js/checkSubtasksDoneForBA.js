@@ -2,8 +2,7 @@
  * Check Subtasks Done For BA — postJSAction for story_ba_check agent.
  *
  * Runs on every SM cycle for each Story in "PO Review".
- * Uses params.ticket.fields.subtasks (loaded with ticketContextDepth:1) so no
- * JQL is needed — avoids issues with parent= filter in this Jira instance.
+ * Fetches subtasks via JQL (jira_search_by_jql returns a plain array).
  *
  * - If all subtasks are Done → moves the Story to "BA Analysis".
  * - Otherwise → removes the SM idempotency label so the SM re-triggers
@@ -29,8 +28,11 @@ function action(params) {
             }
         }
 
-        // Subtasks are included in the ticket fields (ticketContextDepth: 1)
-        const subtasks = (params.ticket.fields && params.ticket.fields.subtasks) || [];
+        // Fetch subtasks via JQL — jira_search_by_jql returns a plain array
+        const subtasks = jira_search_by_jql({
+            jql: 'parent = "' + ticketKey + '" AND issuetype = Subtask ORDER BY created ASC',
+            fields: ['status', 'summary']
+        }) || [];
         console.log('Total subtasks:', subtasks.length);
 
         if (subtasks.length === 0) {

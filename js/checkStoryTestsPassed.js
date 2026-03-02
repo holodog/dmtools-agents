@@ -30,12 +30,13 @@ function action(params) {
         }
 
         // Step 1: Find all linked Test Cases for this story
-        const allTCsResult = jira_search_by_jql({
+        // jira_search_by_jql returns a plain array
+        const allTCs = jira_search_by_jql({
             jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype = "Test Case"',
             maxResults: 100
-        });
+        }) || [];
 
-        const totalTCs = allTCsResult ? (allTCsResult.total || (allTCsResult.issues && allTCsResult.issues.length) || 0) : 0;
+        const totalTCs = allTCs.length;
         console.log('Linked Test Cases:', totalTCs);
 
         if (totalTCs === 0) {
@@ -45,14 +46,12 @@ function action(params) {
         }
 
         // Step 2: Find linked Test Cases that are NOT yet Passed
-        const notPassedResult = jira_search_by_jql({
+        const notPassedTCs = jira_search_by_jql({
             jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype = "Test Case" AND status != "Passed"',
             maxResults: 1
-        });
+        }) || [];
 
-        const notPassedCount = notPassedResult
-            ? (notPassedResult.total || (notPassedResult.issues && notPassedResult.issues.length) || 0)
-            : 0;
+        const notPassedCount = notPassedTCs.length;
 
         console.log('Test Cases not yet Passed:', notPassedCount, '/', totalTCs);
 
