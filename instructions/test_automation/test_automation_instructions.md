@@ -49,12 +49,63 @@ The `README.md` inside the ticket folder is mandatory. It must include:
 
 ---
 
+## Available CI Credentials
+
+Before writing a test, check what is already available in GitHub Actions. **You do NOT need to request these — they are already configured.**
+
+### GCP (Google Cloud)
+- **Authentication**: `GCP_SA_KEY` secret → sets up ADC via `google-github-actions/auth@v2` → `GOOGLE_APPLICATION_CREDENTIALS` is available automatically
+- `GCP_PROJECT_ID` = `ai-native-478811`
+- `GCP_REGION` = `us-central1`
+- `GCP_DB_USER_SECRET`, `GCP_DB_PASSWORD_SECRET` — Secret Manager secret names
+- `CLOUD_SQL_CONNECTION_NAME` — Cloud SQL instance connection name
+
+### Firebase
+- `FIREBASE_PROJECT_ID` = `ai-native-478811`
+- `FIREBASE_API_KEY` — Firebase web API key (public)
+- `FIREBASE_AUTH_DOMAIN` = `ai-native-478811.firebaseapp.com`
+- `FIREBASE_APP_ID`, `FIREBASE_STORAGE_BUCKET`, `FIREBASE_MESSAGING_SENDER_ID`
+
+### Database
+- `DB_USER`, `DB_PASSWORD`, `DB_NAME`
+
+### Web App
+- Frontend: `https://ai-teammate.github.io/mytube` (default — no env var needed)
+- API: `https://mytube-api-80693608388.us-central1.run.app`
+
+### Not yet available (require human setup)
+- `FIREBASE_TEST_EMAIL` / `FIREBASE_TEST_PASSWORD` — dedicated test Firebase user
+- `FIREBASE_TEST_TOKEN` — generated at CI runtime from email+password (see `instruction.md`)
+- `RAW_OBJECT_PATH` — path to a real raw video in GCS (e.g. `gs://mytube-raw-uploads/test-video/raw.mp4`)
+
+---
+
+## Blocked by Human
+
+If a test **cannot run automatically** because required credentials or test data are not yet available in CI, output `"status": "blocked_by_human"` instead of `"passed"` or `"failed"`.
+
+### When to use `blocked_by_human`
+- Required env var or secret does not exist (see "Not yet available" list above)
+- Test needs a real Firebase ID token and `FIREBASE_TEST_EMAIL`/`FIREBASE_TEST_PASSWORD` are not set
+- Test requires pre-existing data in the DB (e.g. a specific user or record not guaranteed to exist)
+- Test requires an external file (e.g. a real video in GCS) not yet uploaded
+
+### How to proceed when blocked
+1. Still write the **complete test code** with `pytest.skip()` guards for missing env vars
+2. Run the test — verify it exits via `pytest.skip` (not an unexpected error or crash)
+3. Write `outputs/response.md` explaining exactly what credentials or data are missing
+4. Write `outputs/test_automation_result.json` with `"status": "blocked_by_human"` (see JSON output format)
+
+**Never output `"failed"` just because credentials are missing** — that incorrectly creates a bug ticket.
+
+---
+
 ## Test Execution
 
 After writing the test:
 1. Install required dependencies (if any)
 2. Run the test
-3. Capture the result (passed / failed)
+3. Capture the result (passed / failed / skipped due to missing credentials)
 4. If failed: capture the full error output and logs
 
 **Do not mark a test as passed without actually running it.**

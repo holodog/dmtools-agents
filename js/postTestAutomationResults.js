@@ -3,9 +3,10 @@
  * 1. Reads outputs/test_automation_result.json
  * 2. Stages testing/ folder, commits, pushes, creates PR to main
  * 3. Posts Jira comment from outputs/response.md
- * 4. If passed:  moves ticket to Done
- * 5. If failed:  creates Bug ticket, links it, moves Test Case to Failed
- * 6. Removes WIP label
+ * 4. If passed:          moves ticket to In Review - Passed
+ * 5. If failed:          creates Bug ticket, links it, moves Test Case to In Review - Failed
+ * 6. If blocked_by_human: moves ticket to Blocked, posts what credentials/data are needed
+ * 7. Removes WIP label
  */
 
 const { GIT_CONFIG, STATUSES, ISSUE_TYPES, LABELS } = require('./config.js');
@@ -152,7 +153,15 @@ function createBugTicket(projectKey, bug) {
 
         const result = jira_create_ticket_basic(projectKey, ISSUE_TYPES.BUG, bug.summary, description);
 
-        const bugKey = result && result.key ? result.key : null;
+        var bugKey = null;
+        if (result) {
+            if (typeof result === 'string') {
+                var urlMatch = result.match(/\/browse\/([A-Z]+-\d+)/);
+                if (urlMatch) bugKey = urlMatch[1];
+            } else if (result.key) {
+                bugKey = result.key;
+            }
+        }
         if (bugKey) console.log('✅ Created bug:', bugKey);
         return bugKey;
     } catch (e) {
@@ -180,7 +189,9 @@ function action(params) {
             return { success: false, error: 'No test result JSON found' };
         }
 
-        const passed = (result.status || '').toLowerCase() === 'passed';
+        const status = (result.status || '').toLowerCase();
+        const passed = status === 'passed';
+        const blockedByHuman = status === 'blocked_by_human';
 
         // Step 2: Configure git author
         try {
@@ -228,6 +239,52 @@ function action(params) {
         }
 
         // Step 6: Handle outcome
+        if (blockedByHuman) {
+            // Build blocked comment
+            var blockedComment = 'h3. 🚫 Test Automation Blocked — Awaiting Human Setup\n\n';
+            if (result.blocked_reason) {
+                blockedComment += result.blocked_reason + '\n\n';
+            }
+            if (result.missing && result.missing.length > 0) {
+                blockedComment += 'h4. Required setup:\n\n';
+                result.missing.forEach(function(item) {
+                    blockedComment += '* *' + (item.name || '?') + '*';
+                    if (item.description) blockedComment += ': ' + item.description;
+                    blockedComment += '\n';
+                    if (item.how_to_add) {
+                        blockedComment += '{code:bash}' + item.how_to_add + '{code}\n';
+                    }
+                });
+            }
+            if (prUrl) {
+                blockedComment += '\n*Test Branch PR* (test code is ready, skips without credentials): ' + prUrl;
+            }
+            blockedComment += '\n\nOnce setup is complete, move this ticket back to *Backlog* to trigger re-run.';
+
+            try {
+                jira_post_comment({ key: ticketKey, comment: blockedComment });
+                console.log('✅ Posted blocked comment to Jira');
+            } catch (e) {
+                console.warn('Failed to post blocked comment:', e);
+            }
+
+            try {
+                jira_move_to_status({ key: ticketKey, statusName: STATUSES.BLOCKED });
+                console.log('✅ Blocked — moved', ticketKey, 'to', STATUSES.BLOCKED);
+            } catch (e) {
+                console.warn('Failed to move to Blocked:', e);
+            }
+
+            // Remove WIP label
+            const wipLabelBlocked = params.metadata && params.metadata.contextId
+                ? params.metadata.contextId + '_wip'
+                : 'test_case_automation_wip';
+            try { jira_remove_label({ key: ticketKey, label: wipLabelBlocked }); } catch (e) {}
+
+            console.log('🚫 Test', ticketKey, 'blocked by human — awaiting credentials/data');
+            return { success: true, status: 'blocked_by_human', ticketKey, prUrl };
+        }
+
         if (passed) {
             try {
                 jira_move_to_status({ key: ticketKey, statusName: STATUSES.IN_REVIEW_PASSED });

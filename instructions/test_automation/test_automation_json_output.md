@@ -23,14 +23,42 @@ After running the test, write the structured result to `outputs/test_automation_
 }
 ```
 
+## When blocked by human (missing credentials or test data)
+
+```json
+{
+  "status": "blocked_by_human",
+  "blocked_reason": "One sentence explaining why the test cannot run automatically.",
+  "missing": [
+    {
+      "type": "github_secret",
+      "name": "FIREBASE_TEST_EMAIL",
+      "description": "Email of a dedicated Firebase test user in project ai-native-478811",
+      "how_to_add": "gh secret set FIREBASE_TEST_EMAIL --body 'test@example.com' --repo ai-teammate/mytube"
+    },
+    {
+      "type": "github_secret",
+      "name": "FIREBASE_TEST_PASSWORD",
+      "description": "Password for the Firebase test user",
+      "how_to_add": "gh secret set FIREBASE_TEST_PASSWORD --body 'password' --repo ai-teammate/mytube"
+    }
+  ]
+}
+```
+
 ## Field rules
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `status` | always | `"passed"` or `"failed"` — **must be exactly lowercase, never `"PASSED"` or `"FAILED"`** |
+| `status` | always | `"passed"`, `"failed"`, or `"blocked_by_human"` — must be exactly lowercase |
 | `bug.summary` | if failed | Short bug title. Format: `Bug: <what failed>` |
 | `bug.description` | if failed | Path to the bug description file you must create |
 | `bug.priority` | if failed | `High`, `Medium`, or `Low` (see priority rules below) |
+| `blocked_reason` | if blocked | One sentence: what is missing and why the test cannot run |
+| `missing[].type` | if blocked | `github_secret`, `github_variable`, `test_data`, or `external_file` |
+| `missing[].name` | if blocked | Name of the secret/variable or short label for the data/file needed |
+| `missing[].description` | if blocked | Human-readable explanation of what it is |
+| `missing[].how_to_add` | if blocked | Exact `gh` command or human action to resolve the block |
 
 ## Bug priority rules
 

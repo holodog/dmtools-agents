@@ -35,6 +35,21 @@ Implement code changes based on ticket requirements including:
   - Fails the PR check if any tests fail
   Match the language/build tool already used in the project (e.g. npm test, mvn test, gradle test, pytest, etc.)
 
+**IMPORTANT**: If the implementation requires new environment variables, configuration, or credentials for GitHub Actions (deployments, tests, or other workflows):
+  1. **Check what already exists first** — never overwrite without checking:
+     ```bash
+     gh secret list --repo ai-teammate/mytube
+     gh variable list --repo ai-teammate/mytube
+     ```
+  2. **Add non-sensitive variables** (URLs, project IDs, feature flags, region names, etc.):
+     ```bash
+     gh variable set VAR_NAME --body "value" --repo ai-teammate/mytube
+     ```
+  3. **For sensitive secrets** (API keys, passwords, tokens) — you cannot set them automatically as you do not have the actual value. Instead, document them in `outputs/response.md` as:
+     > 🔑 **Human action required**: add secret `SECRET_NAME` to GitHub Actions (`gh secret set SECRET_NAME --body "..." --repo ai-teammate/mytube`)
+  4. **Update `instruction.md`** — always add the new entry to the appropriate table (GitHub Secrets or GitHub Variables). Mark secrets not yet added with ⚠️.
+  5. Secrets and variables set at repo level are available to **all** workflows: `ai-teammate.yml`, `deploy-api.yml`, `deploy-pages.yml`, `unit-tests.yml` and any future workflow.
+
 **IMPORTANT**: Before finishing, run `git status` to review every new and modified file. Check for any sensitive files that must NOT be committed:
 - Credential / service-account files (`gha-creds-*.json`, `*-credentials.json`, `*.pem`, `*.key`, `id_rsa`, `keystore.*`)
 - Environment files (`.env`, `.env.*`, `*.env`)
