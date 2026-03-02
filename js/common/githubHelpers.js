@@ -149,15 +149,39 @@ function fetchDiscussionsAndRawData(workspace, repository, pullRequestId) {
         });
 
         if (conversations && conversations.length > 0) {
-            // Try to get GraphQL node IDs for resolve
-            let reviewThreads = [];
+            // Try to get GraphQL node IDs for resolve.
+            // github_get_pr_review_threads returns a raw GraphQL JSON string — must be parsed.
+            // Match by first-comment databaseId (robust against ordering differences).
+            const reviewThreadByCommentId = {};  // databaseId (int) → GraphQL node ID string
             try {
-                reviewThreads = github_get_pr_review_threads({
+                const raw = github_get_pr_review_threads({
                     workspace: workspace,
                     repository: repository,
                     pullRequestId: prIdStr
-                }) || [];
-                console.log('Got', reviewThreads.length, 'review threads for GraphQL IDs');
+                });
+                let nodes = [];
+                if (typeof raw === 'string') {
+                    const parsed = JSON.parse(raw);
+                    nodes = (parsed.data &&
+                             parsed.data.repository &&
+                             parsed.data.repository.pullRequest &&
+                             parsed.data.repository.pullRequest.reviewThreads &&
+                             parsed.data.repository.pullRequest.reviewThreads.nodes) || [];
+                } else if (Array.isArray(raw)) {
+                    nodes = raw;
+                } else if (raw && raw.data) {
+                    nodes = (raw.data.repository &&
+                             raw.data.repository.pullRequest &&
+                             raw.data.repository.pullRequest.reviewThreads &&
+                             raw.data.repository.pullRequest.reviewThreads.nodes) || [];
+                }
+                nodes.forEach(function(rt) {
+                    if (rt.id && rt.comments && rt.comments.nodes && rt.comments.nodes.length > 0) {
+                        const dbId = rt.comments.nodes[0].databaseId;
+                        if (dbId) reviewThreadByCommentId[dbId] = rt.id;
+                    }
+                });
+                console.log('Got', nodes.length, 'review threads for GraphQL IDs');
             } catch (e) {
                 console.warn('github_get_pr_review_threads failed (resolve IDs unavailable):', e.message || e);
             }
@@ -169,8 +193,8 @@ function fetchDiscussionsAndRawData(workspace, repository, pullRequestId) {
                 const replies = Array.isArray(thread.replies) ? thread.replies : [];
 
                 const rootCommentId = rootComment.id || rootComment.databaseId || null;
-                const graphqlThreadId = (reviewThreads[idx] && reviewThreads[idx].id)
-                    ? reviewThreads[idx].id : null;
+                // Match by root-comment databaseId — robust against ordering differences
+                const graphqlThreadId = rootCommentId ? (reviewThreadByCommentId[rootCommentId] || null) : null;
 
                 // Only inline review comments (with a file path) can be replied to via
                 // github_reply_to_pr_thread. PR-level review comments without a path
