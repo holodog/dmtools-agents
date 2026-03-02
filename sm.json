@@ -134,6 +134,13 @@
           "configFile"  : "agents/tc_rerun_trigger.json",
           "skipIfLabel" : "sm_tc_rerun_trigger_triggered",
           "addLabel"    : "sm_tc_rerun_trigger_triggered"
+        },
+        {
+          "description" : "Re-run Test Cases → run existing test → Passed / Failed / In Review",
+          "jql"         : "project = MYTUBE AND issuetype in ('Test Case') AND status in ('Re-run')",
+          "configFile"  : "agents/tc_rerun.json",
+          "skipIfLabel" : "sm_tc_rerun_triggered",
+          "addLabel"    : "sm_tc_rerun_triggered"
         }
       ]
     }
