@@ -64,6 +64,19 @@ function action(params) {
             statusName: 'Re-run'
         });
 
+        // Remove tc_rerun idempotency label so SM can re-trigger tc_rerun.json
+        // (ticket may have gone through a previous tc_rerun cycle that left this label)
+        try {
+            jira_remove_label({ key: ticketKey, label: 'sm_tc_rerun_triggered' });
+            console.log('Removed sm_tc_rerun_triggered to allow re-trigger of tc_rerun.json');
+        } catch (e) {
+            console.warn('Failed to remove sm_tc_rerun_triggered label:', e);
+        }
+
+        // Release the trigger lock too — so if TC comes back to "Failed" later
+        // (e.g. pr_test_automation_review rejects the PR), the trigger can fire again
+        releaseLock();
+
         jira_post_comment({
             key: ticketKey,
             comment: 'h3. 🔄 Test Case Queued for Re-run\n\n' +

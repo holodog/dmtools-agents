@@ -5,8 +5,8 @@
  *
  *   passed + no git changes  → TC → Passed
  *   passed + git changes     → commit/push/PR → TC → In Review - Passed
- *   failed + no git changes  → TC → Failed + all linked Bugs → In Rework
- *   failed + git changes     → commit/push/PR → TC → In Review - Failed
+ *   failed + no git changes  → TC → Failed + all linked Bugs → In Rework (bug still present)
+ *   failed + git changes     → commit/push/PR → TC → In Review - Failed + all linked Bugs → In Rework (test code issue)
  */
 
 const { GIT_CONFIG, STATUSES, LABELS } = require('./config.js');
@@ -142,7 +142,7 @@ function createPullRequest(title, branchName) {
     }
 }
 
-function moveLinkedBugsToInRework(ticketKey) {
+function moveLinkedBugsToInRework(ticketKey, comment) {
     try {
         const linkedBugs = jira_search_by_jql({
             jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype = Bug AND status = "' + STATUSES.IN_TESTING + '"',
@@ -156,6 +156,13 @@ function moveLinkedBugsToInRework(ticketKey) {
             try {
                 jira_move_to_status({ key: bug.key, statusName: STATUSES.IN_REWORK });
                 console.log('✅ Moved linked Bug', bug.key, 'to In Rework');
+                if (comment) {
+                    try {
+                        jira_post_comment({ key: bug.key, comment: comment });
+                    } catch (e) {
+                        console.warn('Failed to post comment on', bug.key, ':', e);
+                    }
+                }
             } catch (e) {
                 console.warn('Failed to move', bug.key, 'to In Rework:', e);
             }
@@ -253,12 +260,18 @@ function action(params) {
                 console.warn('Failed to move TC to', targetStatus, ':', e);
             }
 
-            // Only move linked bugs to In Rework when there are no git changes
-            // (git changes = test code issue, not the bug itself)
-            if (!gitChanged) {
-                const movedBugs = moveLinkedBugsToInRework(ticketKey);
-                console.log('Moved', movedBugs, 'linked Bug(s) to In Rework');
-            }
+            // Always move linked bugs to In Rework on failure:
+            // - no git changes  = bug is still present in the app
+            // - git changes     = test code couldn't be fixed automatically; human review needed
+            const bugComment = gitChanged
+                ? 'h3. ⚠️ Test Re-run Failed (test code modified but still failing)\n\n' +
+                  'Linked Test Case *' + ticketKey + '* was re-run. The automated agent modified the test code but the test still fails.\n\n' +
+                  'A PR was created with the changes. Please review the PR and re-investigate the bug fix.'
+                : 'h3. ❌ Test Re-run Failed (bug still present)\n\n' +
+                  'Linked Test Case *' + ticketKey + '* was re-run and the bug was detected again.\n\n' +
+                  'Please re-investigate the fix.';
+            const movedBugs = moveLinkedBugsToInRework(ticketKey, bugComment);
+            console.log('Moved', movedBugs, 'linked Bug(s) to In Rework');
         }
 
         // Step 7: Remove WIP label
