@@ -21,6 +21,13 @@
           "addLabel"    : "sm_story_acceptance_criterias_triggered"
         },
         {
+          "description" : "Solution Architecture Stories → generate Solution Design",
+          "jql"         : "project = MYTUBE AND issuetype in ('Story') AND status in ('Solution Architecture')",
+          "configFile"  : "agents/story_solution.json",
+          "skipIfLabel" : "sm_story_solution_triggered",
+          "addLabel"    : "sm_story_solution_triggered"
+        },
+        {
           "description" : "Subtasks with 'q' label → trigger PO refinement",
           "jql"         : "project = MYTUBE AND issuetype in ('Subtask') AND labels in ('q')",
           "configFile"  : "agents/po_refinement.json",
