@@ -123,10 +123,19 @@ function action(params) {
 
         try {
             var result = jira_create_ticket_basic(jiraProject, 'Bug', summary, description);
-            var newKey = result && result.key ? result.key : null;
+            var newKey = null;
+            if (result) {
+                if (typeof result === 'string') {
+                    // jira_create_ticket_basic returns a URL: https://.../browse/PROJ-123
+                    var urlMatch = result.match(/\/browse\/([A-Z]+-\d+)/);
+                    if (urlMatch) newKey = urlMatch[1];
+                } else if (result.key) {
+                    newKey = result.key;
+                }
+            }
 
             if (!newKey) {
-                console.warn('  ⚠️  Bug created but no key returned for run ' + runId);
+                console.warn('  ⚠️  Bug created but no key returned for run ' + runId + ' (result: ' + result + ')');
                 created++;
                 continue;
             }
