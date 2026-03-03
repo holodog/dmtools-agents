@@ -4,12 +4,15 @@
  * Reads outputs/bug_decision.json written by the AI:
  *   { "action": "link", "existingKey": "MYTUBE-XXX" }
  *   { "action": "create", "summary": "...", "description": "outputs/bug_description.md" }
+ *   { "action": "none", "reason": "..." }
  *
- * Then either links the existing bug or creates a new one and links it.
+ * For link/create: links/creates bug, moves TC to "Bug To Fix", removes trigger labels.
+ * For none:        posts comment, keeps TC in Failed, keeps trigger label (prevents re-fire).
+ *
  * Link direction: Bug "blocks" TC (TC is blocked by the Bug until it's fixed).
  */
 
-const { LABELS } = require('./config.js');
+const { STATUSES, LABELS } = require('./config.js');
 
 function readFile(path) {
     try {
@@ -56,27 +59,37 @@ function action(params) {
         var ticketKey = params.ticket.key;
         console.log('=== Processing bug creation decision for', ticketKey, '===');
 
+        var customParams = params.jobParams && params.jobParams.customParams;
+        var smTriggerLabel = customParams && customParams.removeLabel;
+
+        var wipLabel = params.metadata && params.metadata.contextId
+            ? params.metadata.contextId + '_wip'
+            : 'bug_creation_wip';
+
         var decision = readDecisionJson();
         if (!decision) {
             jira_post_comment({
                 key: ticketKey,
                 comment: 'h3. ⚠️ Bug Creation Error\n\nCould not read bug_decision.json. Check workflow logs.'
             });
+            try { jira_remove_label({ key: ticketKey, label: wipLabel }); } catch (e) {}
             return { success: false, error: 'No bug_decision.json' };
         }
 
-        console.log('Decision:', decision.action, decision.existingKey || decision.summary);
+        console.log('Decision:', decision.action, decision.existingKey || decision.summary || '');
 
         var bugKey = null;
         var comment = '';
+        var bugLinked = false;
 
         if (decision.action === 'link' && decision.existingKey) {
             // Link to existing bug
             bugKey = decision.existingKey;
             try {
                 linkBugToTC(ticketKey, bugKey);
+                bugLinked = true;
                 comment = 'h3. 🔗 Existing Bug Linked\n\n' +
-                    'Found matching bug: *[' + bugKey + '|' + bugKey + ']*\n\n' +
+                    'Found matching bug: *' + bugKey + '*\n\n' +
                     (decision.reason ? '_' + decision.reason + '_' : '');
             } catch (e) {
                 console.warn('Failed to link existing bug:', e);
@@ -94,6 +107,7 @@ function action(params) {
 
             if (!summary) {
                 jira_post_comment({ key: ticketKey, comment: 'h3. ⚠️ Bug Creation Skipped\n\nNo summary provided in bug_decision.json.' });
+                try { jira_remove_label({ key: ticketKey, label: wipLabel }); } catch (e) {}
                 return { success: false, error: 'No bug summary' };
             }
 
@@ -104,8 +118,9 @@ function action(params) {
 
                 if (bugKey) {
                     linkBugToTC(ticketKey, bugKey);
+                    bugLinked = true;
                     comment = 'h3. 🐛 New Bug Created\n\n' +
-                        'Created: *[' + bugKey + '|' + bugKey + ']*\n' +
+                        'Created: *' + bugKey + '*\n' +
                         '*Summary*: ' + summary + '\n\n' +
                         (decision.reason ? '_' + decision.reason + '_' : '');
                 } else {
@@ -117,7 +132,17 @@ function action(params) {
             }
 
         } else {
-            comment = 'h3. ✅ No Bug Needed\n\n' + (decision.reason || 'AI determined no bug creation or linking is required.');
+            // action: none — test code issue, not an app bug
+            // Keep TC in Failed + keep trigger label to prevent endless re-triggering
+            comment = 'h3. ℹ️ No Bug Created\n\n' +
+                (decision.reason || 'AI determined no bug creation or linking is required.') +
+                '\n\n_TC remains in Failed status for manual review._';
+
+            try { jira_post_comment({ key: ticketKey, comment: comment }); } catch (e) {}
+            try { jira_remove_label({ key: ticketKey, label: wipLabel }); } catch (e) {}
+            // Keep smTriggerLabel — prevents the SM rule from re-firing on the same TC
+            console.log('ℹ️ No action taken for', ticketKey, '— TC stays in Failed, trigger label kept');
+            return { success: true, ticketKey: ticketKey, bugKey: null, action: 'none' };
         }
 
         // Post Jira comment
@@ -127,17 +152,25 @@ function action(params) {
             console.warn('Failed to post Jira comment:', e);
         }
 
+        // Move TC to Bug To Fix after successful link or create
+        if (bugLinked) {
+            try {
+                jira_move_to_status({ key: ticketKey, statusName: STATUSES.BUG_TO_FIX });
+                console.log('✅ Moved', ticketKey, 'to', STATUSES.BUG_TO_FIX);
+            } catch (e) {
+                console.warn('Failed to move to Bug To Fix:', e);
+            }
+        }
+
         // Remove WIP label
-        var wipLabel = params.metadata && params.metadata.contextId
-            ? params.metadata.contextId + '_wip'
-            : 'bug_creation_wip';
         try { jira_remove_label({ key: ticketKey, label: wipLabel }); } catch (e) {}
 
-        // Remove SM trigger label so rule can re-fire if TC fails again later
-        var customParams = params.jobParams && params.jobParams.customParams;
-        var removeLabel = customParams && customParams.removeLabel;
-        if (removeLabel) {
-            try { jira_remove_label({ key: ticketKey, label: removeLabel }); } catch (e) {}
+        // Remove SM trigger label (TC is now in Bug To Fix, not Failed — rule won't re-fire anyway)
+        if (smTriggerLabel) {
+            try {
+                jira_remove_label({ key: ticketKey, label: smTriggerLabel });
+                console.log('✅ Removed SM trigger label:', smTriggerLabel);
+            } catch (e) {}
         }
 
         console.log('✅ Bug creation workflow complete for', ticketKey, '— bugKey:', bugKey || 'none');
