@@ -443,6 +443,11 @@ function detectFailedChecks(owner, repo, headSha, inputFolder) {
             commitSha: headSha
         });
 
+        // Result may be a JSON string — parse it first
+        if (typeof rawResult === 'string') {
+            try { rawResult = JSON.parse(rawResult); } catch (e) {}
+        }
+
         // API returns { total_count: N, check_runs: [...] } — extract the array
         var checkRuns = Array.isArray(rawResult) ? rawResult
             : (rawResult && rawResult.check_runs ? rawResult.check_runs : []);
