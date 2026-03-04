@@ -50,16 +50,32 @@ function readResultJson() {
 
 function performGitOperations(branchName, commitMessage) {
     try {
-        // Stage only testing/ folder
-        console.log('Staging testing/ folder...');
-        cli_execute_command({ command: 'git add testing/' });
+        // Diagnostic: list testing/ folder before staging
+        try {
+            var lsOutput = cli_execute_command({ command: 'find testing/tests/ -type f 2>/dev/null | head -20' }) || '';
+            console.log('Files in testing/tests/:', cleanCommandOutput(lsOutput) || '(empty)');
+        } catch (e) {
+            console.warn('Could not list testing/tests/:', e);
+        }
 
-        const statusOutput = cleanCommandOutput(
-            cli_execute_command({ command: 'git status --porcelain' }) || ''
-        );
+        // Stage testing/ and outputs/ folders
+        console.log('Staging testing/ and outputs/ folders...');
+        cli_execute_command({ command: 'git add testing/ outputs/' });
+
+        var rawStatus = cli_execute_command({ command: 'git status --porcelain' }) || '';
+        console.log('Raw git status length:', rawStatus.length);
+        var statusOutput = cleanCommandOutput(rawStatus);
+        console.log('Cleaned git status:', statusOutput || '(empty)');
 
         if (!statusOutput || !statusOutput.trim()) {
             console.warn('No changes to commit in testing/');
+            // Diagnostic: show full git status
+            try {
+                var fullStatus = cleanCommandOutput(
+                    cli_execute_command({ command: 'git status' }) || ''
+                );
+                console.log('Full git status:', fullStatus);
+            } catch (e) {}
             return { success: false, error: 'No test files were written' };
         }
 
@@ -180,9 +196,10 @@ function action(params) {
         }
 
         // Step 3: Read current branch (set by preCliTestAutomationSetup)
-        const branchName = cleanCommandOutput(
-            cli_execute_command({ command: 'git branch --show-current' }) || ''
-        );
+        var rawBranch = cli_execute_command({ command: 'git branch --show-current' }) || '';
+        console.log('Raw branch output length:', rawBranch.length, 'content:', JSON.stringify(rawBranch.substring(0, 200)));
+        const branchName = cleanCommandOutput(rawBranch);
+        console.log('Cleaned branch name:', JSON.stringify(branchName));
         if (!branchName) {
             console.warn('Could not determine current branch — skipping git operations');
         }
