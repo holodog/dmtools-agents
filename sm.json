@@ -101,7 +101,8 @@
           "jql"         : "project = MYTUBE AND issuetype in ('Story') AND status in ('In Testing')",
           "configFile"  : "agents/story_done_check.json",
           "skipIfLabel" : "sm_story_done_check_triggered",
-          "addLabel"    : "sm_story_done_check_triggered"
+          "addLabel"    : "sm_story_done_check_triggered",
+          "enabled"     : false
         },
         {
           "description" : "In Testing Bugs → check all TCs passed → Done",
