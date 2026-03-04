@@ -215,14 +215,18 @@ function action(params) {
 
         // Step 4: Commit + push + create PR
         let prUrl = null;
+        let noCodeChanges = false;
         if (branchName) {
             const commitMessage = ticketKey + ' test: automate ' + ticketSummary;
             const gitResult = performGitOperations(branchName, commitMessage);
 
-            if (gitResult.success) {
+            if (gitResult.success && !gitResult.noNewCommit) {
                 const prTitle = ticketKey + ' ' + ticketSummary;
                 const prResult = createPullRequest(prTitle, branchName);
                 prUrl = prResult.prUrl;
+            } else if (gitResult.noNewCommit) {
+                noCodeChanges = true;
+                console.log('ℹ️ No test code changes — skipping PR review, moving ticket directly');
             } else {
                 console.warn('Git operations failed:', gitResult.error);
             }
@@ -234,6 +238,9 @@ function action(params) {
             if (prUrl) {
                 comment += '\n\n*Test Branch PR*: ' + prUrl;
             }
+            if (noCodeChanges) {
+                comment += '\n\nℹ️ _Test code unchanged from previous run — PR review step skipped._';
+            }
             if (comment) {
                 jira_post_comment({ key: ticketKey, comment: comment });
                 console.log('✅ Posted test result comment to Jira');
@@ -243,6 +250,8 @@ function action(params) {
         }
 
         // Step 6: Handle outcome
+        // When no code changes, skip "In Review" and move directly to final status
+        // (test code was already reviewed in a previous run)
         if (blockedByHuman) {
             // Build blocked comment
             var blockedComment = 'h3. 🚫 Test Automation Blocked — Awaiting Human Setup\n\n';
@@ -300,18 +309,20 @@ function action(params) {
 
         if (passed) {
             try {
-                jira_move_to_status({ key: ticketKey, statusName: STATUSES.IN_REVIEW_PASSED });
-                console.log('✅ Passed — moved', ticketKey, 'to', STATUSES.IN_REVIEW_PASSED);
+                var passedStatus = noCodeChanges ? STATUSES.PASSED : STATUSES.IN_REVIEW_PASSED;
+                jira_move_to_status({ key: ticketKey, statusName: passedStatus });
+                console.log('✅ Passed — moved', ticketKey, 'to', passedStatus);
             } catch (e) {
-                console.warn('Failed to move to In Review - Passed:', e);
+                console.warn('Failed to move to Passed:', e);
             }
         } else {
             // Bug creation is handled by the bug_creation agent when TC reaches Failed status
             try {
-                jira_move_to_status({ key: ticketKey, statusName: STATUSES.IN_REVIEW_FAILED });
-                console.log('✅ Failed — moved', ticketKey, 'to', STATUSES.IN_REVIEW_FAILED);
+                var failedStatus = noCodeChanges ? STATUSES.FAILED : STATUSES.IN_REVIEW_FAILED;
+                jira_move_to_status({ key: ticketKey, statusName: failedStatus });
+                console.log('✅ Failed — moved', ticketKey, 'to', failedStatus);
             } catch (e) {
-                console.warn('Failed to move to In Review - Failed:', e);
+                console.warn('Failed to move to Failed:', e);
             }
         }
 
