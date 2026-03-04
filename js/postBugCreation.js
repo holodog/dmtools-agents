@@ -160,6 +160,16 @@ function action(params) {
             } catch (e) {
                 console.warn('Failed to move to Bug To Fix:', e);
             }
+
+            // Move the bug to Ready For Development so it gets picked up
+            if (bugKey) {
+                try {
+                    jira_move_to_status({ key: bugKey, statusName: STATUSES.READY_FOR_DEVELOPMENT });
+                    console.log('✅ Moved bug', bugKey, 'to', STATUSES.READY_FOR_DEVELOPMENT);
+                } catch (e) {
+                    console.warn('Failed to move bug to Ready For Development:', e);
+                }
+            }
         }
 
         // Remove WIP label
