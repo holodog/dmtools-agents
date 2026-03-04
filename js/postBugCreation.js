@@ -173,6 +173,14 @@ function action(params) {
             } catch (e) {}
         }
 
+        // Always remove sm_test_automation_triggered when TC reaches Bug To Fix.
+        // The test automation agent leaves this label on Failed TCs — it must be
+        // cleaned up here so the TC can be re-triggered after the bug is fixed.
+        try {
+            jira_remove_label({ key: ticketKey, label: 'sm_test_automation_triggered' });
+            console.log('✅ Removed sm_test_automation_triggered');
+        } catch (e) {}
+
         console.log('✅ Bug creation workflow complete for', ticketKey, '— bugKey:', bugKey || 'none');
         return { success: true, ticketKey: ticketKey, bugKey: bugKey, action: decision.action };
 
