@@ -437,11 +437,15 @@ function detectFailedChecks(owner, repo, headSha, inputFolder) {
 
         console.log('Checking CI status for commit:', headSha.substring(0, 8) + '...');
 
-        var checkRuns = github_get_commit_check_runs({
+        var rawResult = github_get_commit_check_runs({
             workspace: owner,
             repository: repo,
             commitSha: headSha
         });
+
+        // API returns { total_count: N, check_runs: [...] } — extract the array
+        var checkRuns = Array.isArray(rawResult) ? rawResult
+            : (rawResult && rawResult.check_runs ? rawResult.check_runs : []);
 
         if (!checkRuns || !checkRuns.length) {
             console.log('No CI checks found for commit');
