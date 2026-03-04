@@ -37,6 +37,54 @@ You are reviewing a Pull Request that contains **automated test code** for a spe
 - If test PASSED: verify the assertions are meaningful (not trivially true)
 - If test FAILED: verify the failure is genuine (not caused by a broken test setup or wrong assertion)
 
+### 5. Test data — self-sufficiency check
+
+When the test is `blocked_by_human` due to missing media files (video, audio, image) **or** when the test hardcodes a path to a file that must be provided externally, check whether the test data could be obtained without human involvement.
+
+**Apply this check in order:**
+
+#### Can it be generated programmatically?
+Look for tests that need a minimal valid media file. If the test only needs _any_ valid file (not a specific real-world asset), the test should generate it itself using tools available in the CI environment:
+
+```bash
+# Minimal MP4 (1 sec, 1x1 px, ~5 KB)
+ffmpeg -f lavfi -i color=c=black:s=1x1:d=1 -c:v libx264 -t 1 -movflags +faststart /tmp/test_video.mp4
+
+# Minimal MP3 (1 sec, silent)
+ffmpeg -f lavfi -i anullsrc=r=44100:cl=mono -t 1 -q:a 9 -acodec libmp3lame /tmp/test_audio.mp3
+
+# Minimal JPEG (1x1 px, Python one-liner)
+python3 -c "import base64,pathlib; pathlib.Path('/tmp/test_image.jpg').write_bytes(base64.b64decode('...'))"
+```
+
+If the test can be made self-sufficient this way → **REQUEST_CHANGES**: include the exact generation snippet in the inline comment and ask the author to add it to the test setup.
+
+#### Can it be downloaded from a public source?
+If a slightly larger or more realistic file is needed:
+
+| File type | Suggested URL |
+|-----------|--------------|
+| MP4 | `https://www.w3schools.com/html/mov_bbb.mp4` |
+| MP4 (larger) | `https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4` |
+| MP3 | `https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3` |
+| JPEG | `https://www.gstatic.com/webp/gallery/1.jpg` |
+
+If a `curl` download in test setup would suffice → **REQUEST_CHANGES**: include the download snippet and GCS upload command if the test needs the file in `gs://mytube-raw-uploads/`.
+
+#### Does it genuinely require a human-supplied asset?
+Only if the test specifically requires a real-world file that cannot be synthesised or downloaded freely (e.g. a licensed video, a file with specific codec characteristics that ffmpeg cannot produce). In this case:
+
+- **APPROVE** the `blocked_by_human` status
+- In the general comment, clearly state:
+  1. What file is needed (format, minimum specs)
+  2. Where it must be placed (local path or GCS path)
+  3. Which env var or config must point to it
+  4. Any generation command that could work if the human has the right tools
+
+**Never approve a `blocked_by_human` for test data without first verifying that self-generation or download is not feasible.**
+
+---
+
 ## Recommendation
 
 - **APPROVE**: Test correctly implements the ticket, code is clean, result is valid
