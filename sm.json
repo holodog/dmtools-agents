@@ -85,7 +85,7 @@
           "configFile"  : "agents/bug_merged.json",
           "skipIfLabel" : "sm_bug_merged_triggered",
           "addLabel"    : "sm_bug_merged_triggered",
-          "enabled"     : false,
+          "enabled"     : true,
           "limit"       : 1
         },
         {
@@ -141,6 +141,13 @@
           "skipIfLabel" : "sm_bug_creation_triggered",
           "addLabel"    : "sm_bug_creation_triggered",
           "limit"       : 1
+        },
+        {
+          "description" : "Bug To Fix Test Cases → all linked Bugs Done → move to Backlog",
+          "jql"         : "project = MYTUBE AND issuetype in ('Test Case') AND status in ('Bug To Fix')",
+          "configFile"  : "agents/bug_to_fix_check.json",
+          "skipIfLabel" : "sm_bug_to_fix_check_triggered",
+          "addLabel"    : "sm_bug_to_fix_check_triggered"
         },
         {
           "description" : "Failed Test Cases → check if all linked Bugs are In Testing → Re-run",
