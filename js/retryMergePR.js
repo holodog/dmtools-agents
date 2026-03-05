@@ -103,8 +103,8 @@ function action(params) {
         console.warn('Could not get PR details, will attempt merge anyway:', e);
     }
 
-    // GitHub hasn't computed mergeability yet, CI checks still running, or branch is behind main — release lock and retry
-    if (mergeable === null || mergeableState === 'unknown' || mergeableState === 'blocked' || mergeableState === 'unstable' || mergeableState === 'behind') {
+    // GitHub hasn't computed mergeability yet, or CI checks still running — release lock and retry
+    if (mergeable === null || mergeableState === 'unknown' || mergeableState === 'blocked' || mergeableState === 'unstable') {
         console.log('PR not ready to merge (' + mergeableState + ') — releasing lock to retry next cycle');
         releaseLock(ticketKey, params);
         return false;
@@ -152,8 +152,8 @@ function action(params) {
     } catch (mergeErr) {
         console.warn('Merge failed:', mergeErr);
         const errMsg = mergeErr ? String(mergeErr) : '';
-        const isConflict = errMsg.toLowerCase().indexOf('conflict') !== -1 || errMsg.indexOf('405') !== -1;
-        const isCIBlocking = errMsg.indexOf('blocked') !== -1 || errMsg.indexOf('422') !== -1;
+        const isConflict = errMsg.toLowerCase().indexOf('conflict') !== -1;
+        const isCIBlocking = errMsg.indexOf('blocked') !== -1 || errMsg.indexOf('422') !== -1 || errMsg.indexOf('405') !== -1;
 
         if (!isConflict && (isCIBlocking || errMsg === '')) {
             // Temporary block — release lock and retry next cycle, keep pr_approved
