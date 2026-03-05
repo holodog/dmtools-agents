@@ -103,8 +103,8 @@ function action(params) {
         console.warn('Could not get PR details, will attempt merge anyway:', e);
     }
 
-    // GitHub hasn't computed mergeability yet, or CI checks still running — release lock and retry
-    if (mergeable === null || mergeableState === 'unknown' || mergeableState === 'blocked' || mergeableState === 'unstable') {
+    // GitHub hasn't computed mergeability yet, CI checks still running, or branch is behind main — release lock and retry
+    if (mergeable === null || mergeableState === 'unknown' || mergeableState === 'blocked' || mergeableState === 'unstable' || mergeableState === 'behind') {
         console.log('PR not ready to merge (' + mergeableState + ') — releasing lock to retry next cycle');
         releaseLock(ticketKey, params);
         return false;
