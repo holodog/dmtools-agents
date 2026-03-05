@@ -58,16 +58,15 @@ function removeApprovedLabels(owner, repo, prNumber, ticketKey) {
     }
 }
 
-function releaseLock(params) {
+function releaseLock(ticketKey, params) {
     const removeLabel = params.jobParams && params.jobParams.customParams && params.jobParams.customParams.removeLabel;
-    const ticketKey = params.ticketKey || (params.metadata && params.metadata.ticketKey);
     if (removeLabel && ticketKey) {
         try { jira_remove_label({ key: ticketKey, label: removeLabel }); } catch (e) {}
     }
 }
 
 function action(params) {
-    const ticketKey = params.ticketKey || (params.metadata && params.metadata.ticketKey);
+    const ticketKey = params.ticket && params.ticket.key;
     if (!ticketKey) {
         console.error('No ticketKey provided');
         return false;
@@ -76,13 +75,15 @@ function action(params) {
     const repoInfo = getGitHubRepoInfo();
     if (!repoInfo) {
         console.error('Could not determine owner/repo');
+        releaseLock(ticketKey, params);
         return false;
     }
     const { owner, repo } = repoInfo;
 
     const pr = findPRForTicket(owner, repo, ticketKey);
     if (!pr) {
-        console.warn('No open PR found for ticket ' + ticketKey + ' — skipping retry merge');
+        console.warn('No open PR found for ticket ' + ticketKey + ' — releasing lock');
+        releaseLock(ticketKey, params);
         return false;
     }
 
@@ -102,10 +103,10 @@ function action(params) {
         console.warn('Could not get PR details, will attempt merge anyway:', e);
     }
 
-    // CI checks still running — release lock and wait for next SM cycle
-    if (mergeableState === 'blocked' || mergeableState === 'unstable') {
-        console.log('PR checks still pending/failing (' + mergeableState + ') — releasing lock to retry next cycle');
-        releaseLock(params);
+    // GitHub hasn't computed mergeability yet, or CI checks still running — release lock and retry
+    if (mergeable === null || mergeableState === 'unknown' || mergeableState === 'blocked' || mergeableState === 'unstable') {
+        console.log('PR not ready to merge (' + mergeableState + ') — releasing lock to retry next cycle');
+        releaseLock(ticketKey, params);
         return false;
     }
 
@@ -113,7 +114,7 @@ function action(params) {
     if (mergeable === false && mergeableState === 'dirty') {
         console.log('PR has merge conflict — moving ticket to In Rework');
         removeApprovedLabels(owner, repo, prNumber, ticketKey);
-        releaseLock(params);
+        releaseLock(ticketKey, params);
         jira_post_comment({
             key: ticketKey,
             comment: '{panel:bgColor=#FFEBE6|borderColor=#DE350B}⚠️ *MERGE CONFLICT* — PR #' + prNumber + ' has a merge conflict with main. Please resolve conflicts and re-push.\n\n[View PR|' + prUrl + ']{panel}'
@@ -133,17 +134,26 @@ function action(params) {
         });
         console.log('✅ PR #' + prNumber + ' merged successfully');
         removeApprovedLabels(owner, repo, prNumber, ticketKey);
-        releaseLock(params);
+        releaseLock(ticketKey, params);
         jira_move_to_status({ key: ticketKey, statusName: STATUSES.MERGED });
         console.log('✅ Ticket moved to Merged');
         return true;
     } catch (mergeErr) {
         console.warn('Merge failed:', mergeErr);
         const errMsg = mergeErr ? String(mergeErr) : '';
-        const isConflict = errMsg.toLowerCase().indexOf('conflict') !== -1;
+        const isConflict = errMsg.toLowerCase().indexOf('conflict') !== -1 || errMsg.indexOf('405') !== -1;
+        const isCIBlocking = errMsg.indexOf('blocked') !== -1 || errMsg.indexOf('422') !== -1;
+
+        if (!isConflict && (isCIBlocking || errMsg === '')) {
+            // Temporary block — release lock and retry next cycle, keep pr_approved
+            console.log('Merge blocked temporarily — releasing lock to retry next cycle');
+            releaseLock(ticketKey, params);
+            return false;
+        }
+
         const reason = isConflict ? 'merge conflict' : 'CI checks failing or PR not mergeable';
         removeApprovedLabels(owner, repo, prNumber, ticketKey);
-        releaseLock(params);
+        releaseLock(ticketKey, params);
         jira_post_comment({
             key: ticketKey,
             comment: '{panel:bgColor=#FFEBE6|borderColor=#DE350B}⚠️ *MERGE FAILED* — Could not merge PR #' + prNumber + ': ' + reason + '. Please check and re-push.\n\n[View PR|' + prUrl + ']{panel}'
