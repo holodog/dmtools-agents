@@ -59,7 +59,7 @@
         },
         {
           "description" : "In Review Stories & Bugs → trigger pr_review",
-          "jql"         : "project = MYTUBE AND issuetype in ('Story', 'Bug') AND status in ('In Review')",
+          "jql"         : "project = MYTUBE AND issuetype in ('Story', 'Bug') AND status in ('In Review') AND labels NOT IN ('pr_approved')",
           "configFile"  : "agents/pr_review.json",
           "skipIfLabel" : "sm_story_review_triggered",
           "addLabel"    : "sm_story_review_triggered"
