@@ -126,9 +126,15 @@ function action(params) {
             var newKey = null;
             if (result) {
                 if (typeof result === 'string') {
-                    // jira_create_ticket_basic returns a URL: https://.../browse/PROJ-123
-                    var urlMatch = result.match(/\/browse\/([A-Z]+-\d+)/);
-                    if (urlMatch) newKey = urlMatch[1];
+                    // jira_create_ticket_basic returns JSON: {"id":"...","key":"PROJ-123",...}
+                    try {
+                        var parsed = JSON.parse(result);
+                        if (parsed && parsed.key) newKey = parsed.key;
+                    } catch (e) {}
+                    if (!newKey) {
+                        var urlMatch = result.match(/\/browse\/([A-Z]+-\d+)/);
+                        if (urlMatch) newKey = urlMatch[1];
+                    }
                 } else if (result.key) {
                     newKey = result.key;
                 }

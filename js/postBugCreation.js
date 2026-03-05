@@ -37,6 +37,12 @@ function readDecisionJson() {
 function extractKeyFromResult(result) {
     if (!result) return null;
     if (typeof result === 'string') {
+        // jira_create_ticket_basic returns a JSON string: {"id":"...","key":"PROJ-123",...}
+        try {
+            var parsed = JSON.parse(result);
+            if (parsed && parsed.key) return parsed.key;
+        } catch (e) {}
+        // fallback: try /browse/ URL pattern
         var urlMatch = result.match(/\/browse\/([A-Z]+-\d+)/);
         return urlMatch ? urlMatch[1] : null;
     }
