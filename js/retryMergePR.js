@@ -109,6 +109,18 @@ function action(params) {
         return false;
     }
 
+    // PR branch is behind base — update it so CI can re-run, then retry next cycle
+    if (mergeableState === 'behind') {
+        console.log('PR branch is behind base — requesting branch update');
+        try {
+            cli_execute_command({ command: 'gh api repos/' + owner + '/' + repo + '/pulls/' + prNumber + '/update-branch -X PUT' });
+            console.log('Branch update requested — will retry merge next cycle after CI passes');
+        } catch (updateErr) {
+            console.warn('Could not update branch (may already be updating):', updateErr);
+        }
+        return false;
+    }
+
     // Conflict detected before attempting merge
     if (mergeable === false && mergeableState === 'dirty') {
         console.log('PR has merge conflict — moving ticket to In Rework');
