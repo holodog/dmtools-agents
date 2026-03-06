@@ -98,10 +98,10 @@ function action(params) {
                     head: testBranchName,
                     base: 'main'
                 });
-                file_write({ path: '/tmp/pr_create_' + ticketKey + '.json', content: prData });
+                file_write({ path: 'pr_create_' + ticketKey + '.json', content: prData });
 
                 const createOutput = cli_execute_command({
-                    command: 'gh api repos/' + repoInfo.owner + '/' + repoInfo.repo + '/pulls --input /tmp/pr_create_' + ticketKey + '.json'
+                    command: 'gh api repos/' + repoInfo.owner + '/' + repoInfo.repo + '/pulls --input pr_create_' + ticketKey + '.json'
                 }) || '';
 
                 console.log('gh api pr create output length:', createOutput.length);

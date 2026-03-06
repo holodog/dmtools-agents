@@ -153,10 +153,10 @@ function createPRIfMissing(owner, repo, branchName, ticketKey) {
             head: branchName,
             base: 'main'
         });
-        file_write({ path: '/tmp/pr_post_rework_' + ticketKey + '.json', content: prData });
+        file_write({ path: 'pr_post_rework_' + ticketKey + '.json', content: prData });
 
         const createOutput = cli_execute_command({
-            command: 'gh api repos/' + owner + '/' + repo + '/pulls --input /tmp/pr_post_rework_' + ticketKey + '.json'
+            command: 'gh api repos/' + owner + '/' + repo + '/pulls --input pr_post_rework_' + ticketKey + '.json'
         }) || '';
 
         var prJson;
