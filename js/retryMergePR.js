@@ -103,10 +103,9 @@ function action(params) {
         console.warn('Could not get PR details, will attempt merge anyway:', e);
     }
 
-    // GitHub hasn't computed mergeability yet, or CI checks still running — release lock and retry
+    // GitHub hasn't computed mergeability yet, or CI checks still running — retry next cycle
     if (mergeable === null || mergeableState === 'unknown' || mergeableState === 'blocked' || mergeableState === 'unstable') {
-        console.log('PR not ready to merge (' + mergeableState + ') — releasing lock to retry next cycle');
-        releaseLock(ticketKey, params);
+        console.log('PR not ready to merge (' + mergeableState + ') — will retry next cycle');
         return false;
     }
 
@@ -156,9 +155,8 @@ function action(params) {
         const isCIBlocking = errMsg.indexOf('blocked') !== -1 || errMsg.indexOf('422') !== -1 || errMsg.indexOf('405') !== -1;
 
         if (!isConflict && (isCIBlocking || errMsg === '')) {
-            // Temporary block — release lock and retry next cycle, keep pr_approved
-            console.log('Merge blocked temporarily — releasing lock to retry next cycle');
-            releaseLock(ticketKey, params);
+            // Temporary block — retry next cycle, keep pr_approved
+            console.log('Merge blocked temporarily — will retry next cycle');
             return false;
         }
 

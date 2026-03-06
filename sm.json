@@ -68,14 +68,12 @@
           "description": "In Review Stories & Bugs (pr_approved) → retry merge",
           "jql": "project = MYTUBE AND issuetype in ('Story', 'Bug') AND status in ('In Review') AND labels = 'pr_approved'",
           "configFile": "agents/retry_merge.json",
-          "addLabel": "sm_pr_merge_triggered",
           "localExecution": true
         },
         {
           "description": "In Review Test Cases (pr_approved) → retry merge",
           "jql": "project = MYTUBE AND issuetype in ('Test Case') AND status in ('In Review - Passed', 'In Review - Failed') AND labels = 'pr_approved'",
           "configFile": "agents/retry_merge_test.json",
-          "addLabel": "sm_test_merge_triggered",
           "localExecution": true
         },
         {
