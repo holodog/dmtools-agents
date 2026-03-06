@@ -2,7 +2,7 @@
  * Develop Bug and Create PR Post-Action
  * postJSAction for bug_development agent.
  *
- * Three possible outcomes determined by outputs written by the CLI agent:
+ * Four possible outcomes determined by outputs written by the CLI agent:
  *
  *   outputs/blocked.json      → Bug cannot be fixed (needs human / credentials / etc.)
  *                               → Post Jira comment, move to Blocked, remove labels
@@ -11,7 +11,11 @@
  *                               → Post Jira comment with commit ref, move to Merged
  *                                 (SM then runs bug_merged → RCA/Solution field → Ready For Testing)
  *
- *   (neither file)             → Normal fix — code changes made
+ *   (neither file, but response.md missing) → CLI agent was interrupted (rate limit / crash)
+ *                               → Push partial work (e.g. outputs/rca.md) if any
+ *                               → Post informational comment, move to Ready For Development for retry
+ *
+ *   (neither file, response.md present) → Normal fix — code changes made
  *                               → Delegate to developTicketAndCreatePR: commit, push, create PR, move to In Review
  */
 
@@ -114,6 +118,82 @@ function action(params) {
 
         // ── Path 3: Normal Fix — code changes present ────────────────────────
         console.log('No special outputs found — proceeding with normal PR creation');
+
+        // Before delegating, check if the CLI agent was interrupted (no response.md, no code changes).
+        // If there ARE git changes (e.g. outputs/rca.md written) but no response.md, the agent
+        // was interrupted mid-way. Push partial work and reset ticket for retry.
+        const actualParamsForCheck = params.ticket ? params : (params.jobParams || params);
+        const ticketKeyForCheck = actualParamsForCheck.ticket.key;
+
+        let hasGitChanges = false;
+        try {
+            cli_execute_command({ command: 'git add .' });
+            const rawStatus = cli_execute_command({ command: 'git status --porcelain' }) || '';
+            const statusLines = rawStatus.split('\n').filter(function(l) {
+                return l.trim() &&
+                       l.indexOf('Script started') === -1 &&
+                       l.indexOf('Script done') === -1;
+            });
+            hasGitChanges = statusLines.length > 0;
+        } catch (e) {
+            console.warn('Could not check git status:', e);
+        }
+
+        let hasResponseMd = false;
+        try {
+            const r = file_read({ path: 'outputs/response.md' });
+            hasResponseMd = !!(r && r.trim());
+        } catch (e) {}
+
+        if (!hasResponseMd) {
+            // CLI agent did not finish (rate limit / crash). Push whatever partial work exists
+            // (e.g. outputs/rca.md) and reset the ticket so SM can retry.
+            console.log('outputs/response.md missing — CLI agent was interrupted. Resetting ticket for retry.');
+
+            if (hasGitChanges) {
+                console.log('Partial git changes found — pushing to preserve analysis work...');
+                try {
+                    const rawBranch = cli_execute_command({ command: 'git branch --show-current' }) || '';
+                    const partialBranch = rawBranch.split('\n').filter(function(l) {
+                        return l.trim() &&
+                               l.indexOf('Script started') === -1 &&
+                               l.indexOf('Script done') === -1;
+                    }).join('').trim();
+                    if (partialBranch) {
+                        cli_execute_command({ command: 'git config user.name "AI Teammate"' });
+                        cli_execute_command({ command: 'git config user.email "ai-teammate@users.noreply.github.com"' });
+                        cli_execute_command({ command: 'git commit -m "' + ticketKeyForCheck + ' WIP: partial analysis (agent interrupted)"' });
+                        cli_execute_command({ command: 'git push -u origin ' + partialBranch });
+                        console.log('✅ Pushed partial analysis to branch:', partialBranch);
+                    }
+                } catch (pushErr) {
+                    console.warn('Could not push partial work:', pushErr);
+                }
+            } else {
+                console.log('No git changes — nothing to push.');
+            }
+
+            // Post informational comment
+            try {
+                jira_post_comment({
+                    key: ticketKeyForCheck,
+                    comment: 'h3. ⏸️ Development Interrupted\n\nThe AI agent was interrupted (likely hit a rate limit) before completing the implementation. The ticket has been reset to *Ready For Development* and will be automatically retried.\n\n' +
+                        (hasGitChanges ? 'Partial analysis work was saved to the branch.' : 'No partial work was produced.')
+                });
+            } catch (e) {}
+
+            // Move ticket back to Ready For Development for retry
+            try {
+                jira_move_to_status({ key: ticketKeyForCheck, statusName: STATUSES.READY_FOR_DEVELOPMENT });
+                console.log('✅ Moved', ticketKeyForCheck, 'to Ready For Development for retry');
+            } catch (e) {
+                console.warn('Failed to move ticket to Ready For Development:', e);
+            }
+
+            removeLabels(ticketKeyForCheck, params);
+            return { success: true, path: 'interrupted', ticketKey: ticketKeyForCheck };
+        }
+
         const result = developTicket.action(params);
 
         // Remove SM idempotency label after PR creation

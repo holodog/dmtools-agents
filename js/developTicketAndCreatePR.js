@@ -465,6 +465,28 @@ function action(params) {
                     return { success: false, error: 'Git push failed even after retry: ' + retryResult.error };
                 }
                 // Push succeeded after agent fix — continue to PR creation
+            } else if (gitResult.error && gitResult.error.indexOf('No changes were made') !== -1) {
+                // CLI agent was interrupted before making any code changes (e.g. rate limit hit
+                // during analysis). Reset ticket to Ready For Development for automatic retry.
+                console.log('No git changes detected — CLI agent was interrupted. Resetting ticket for retry.');
+                try {
+                    jira_post_comment({
+                        key: ticketKey,
+                        comment: 'h3. ⏸️ Development Interrupted\n\nThe AI agent was interrupted (likely hit a rate limit) before completing the implementation. The ticket has been reset to *Ready For Development* and will be automatically retried.'
+                    });
+                } catch (e) {}
+                try {
+                    jira_move_to_status({ key: ticketKey, statusName: STATUSES.READY_FOR_DEVELOPMENT });
+                    console.log('✅ Moved', ticketKey, 'to Ready For Development for retry');
+                } catch (e) {
+                    console.warn('Failed to move ticket to Ready For Development:', e);
+                }
+                const wipLabel = actualParams.metadata && actualParams.metadata.contextId
+                    ? actualParams.metadata.contextId + '_wip' : null;
+                if (wipLabel) {
+                    try { jira_remove_label({ key: ticketKey, label: wipLabel }); } catch (e) {}
+                }
+                return { success: true, path: 'interrupted', ticketKey: ticketKey };
             } else {
                 postErrorCommentToJira(ticketKey, 'Git Operations', gitResult.error);
                 return { success: false, error: 'Git operations failed: ' + gitResult.error };
@@ -472,28 +494,36 @@ function action(params) {
         }
 
         // Verify outputs/response.md exists (must be created by cursor-agent or workflow)
+        let responseContent;
         try {
-            const responseContent = file_read({
-                path: 'outputs/response.md'
-            });
-            if (!responseContent) {
-                const error = 'outputs/response.md not found or empty - must be created before running this script';
-                console.error(error);
-                postErrorCommentToJira(ticketKey, 'PR Body Preparation', error);
-                return {
-                    success: false,
-                    error: error
-                };
-            }
-            console.log('Using outputs/response.md as PR body (' + responseContent.length + ' characters)');
-        } catch (error) {
-            console.error('Failed to read outputs/response.md:', error);
-            postErrorCommentToJira(ticketKey, 'PR Body Preparation', error.toString());
-            return {
-                success: false,
-                error: 'Failed to read PR body: ' + error.toString()
-            };
+            responseContent = file_read({ path: 'outputs/response.md' });
+        } catch (e) {
+            responseContent = null;
         }
+        if (!responseContent || !responseContent.trim()) {
+            // Agent was interrupted after committing partial work (e.g. outputs/rca.md) but
+            // before writing response.md. Reset ticket for retry rather than posting an error.
+            console.log('outputs/response.md missing after commit — CLI agent was interrupted mid-way. Resetting for retry.');
+            try {
+                jira_post_comment({
+                    key: ticketKey,
+                    comment: 'h3. ⏸️ Development Interrupted\n\nThe AI agent was interrupted before completing the implementation (partial work was pushed to branch *' + branchName + '*). The ticket has been reset to *Ready For Development* and will be automatically retried.\n\nThe agent can resume from the existing branch.'
+                });
+            } catch (e) {}
+            try {
+                jira_move_to_status({ key: ticketKey, statusName: STATUSES.READY_FOR_DEVELOPMENT });
+                console.log('✅ Moved', ticketKey, 'to Ready For Development for retry');
+            } catch (e) {
+                console.warn('Failed to move ticket to Ready For Development:', e);
+            }
+            const wipLabel2 = actualParams.metadata && actualParams.metadata.contextId
+                ? actualParams.metadata.contextId + '_wip' : null;
+            if (wipLabel2) {
+                try { jira_remove_label({ key: ticketKey, label: wipLabel2 }); } catch (e) {}
+            }
+            return { success: true, path: 'interrupted', ticketKey: ticketKey };
+        }
+        console.log('Using outputs/response.md as PR body (' + responseContent.length + ' characters)');
 
         // Create Pull Request
         const prTitle = ticketKey + ' ' + ticketSummary;

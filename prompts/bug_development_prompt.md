@@ -26,6 +26,8 @@ Before reading any source code, do ALL of the following:
 
 Find the actual root cause in the code before touching anything. See `bug_implementation_instructions.md` for the required format.
 
+> ⚠️ **Write `outputs/rca.md` as soon as you form your first hypothesis** — even if incomplete. Update it as you learn more. This ensures your analysis is preserved if the session is interrupted (e.g. rate limit). An incomplete RCA file is better than no file at all.
+
 ### 2. Check if already fixed
 
 After RCA, check recent git history (`git log --oneline -20`) and the relevant code paths.
