@@ -10,24 +10,25 @@
 const { STATUSES } = require('./config.js');
 
 function action(params) {
-    try {
-        const ticketKey = params.ticket.key;
-        console.log('=== Bug done check for', ticketKey, '===');
+    const ticketKey = params.ticket && params.ticket.key;
+    const customParams = params.jobParams && params.jobParams.customParams;
+    const removeLabel = customParams && customParams.removeLabel;
 
-        const customParams = params.jobParams && params.jobParams.customParams;
-        const removeLabel = customParams && customParams.removeLabel;
-
-        // Helper: remove SM label so the check re-runs on the next SM cycle
-        function releaseLock() {
-            if (removeLabel) {
-                try {
-                    jira_remove_label({ key: ticketKey, label: removeLabel });
-                    console.log('Released SM label — will re-check next cycle');
-                } catch (e) {
-                    console.warn('Failed to remove SM label:', e);
-                }
+    // Helper: remove SM label so the check re-runs on the next SM cycle
+    function releaseLock() {
+        if (ticketKey && removeLabel) {
+            try {
+                jira_remove_label({ key: ticketKey, label: removeLabel });
+                console.log('Released SM label — will re-check next cycle');
+            } catch (e) {
+                console.warn('Failed to remove SM label:', e);
             }
         }
+    }
+
+    try {
+        if (!ticketKey) throw new Error('params.ticket.key is missing');
+        console.log('=== Bug done check for', ticketKey, '===');
 
         // Step 1: Find all linked Test Cases for this bug
         // jira_search_by_jql returns a plain array
@@ -81,6 +82,7 @@ function action(params) {
 
     } catch (error) {
         console.error('❌ Error in checkBugTestsPassed:', error);
+        releaseLock();
         return { success: false, error: error.toString() };
     }
 }

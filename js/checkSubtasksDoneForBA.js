@@ -10,23 +10,24 @@
  */
 
 function action(params) {
-    try {
-        const ticketKey = params.ticket.key;
-        console.log('=== BA readiness check for', ticketKey, '===');
+    const ticketKey = params.ticket && params.ticket.key;
+    const customParams = params.jobParams && params.jobParams.customParams;
+    const removeLabel = customParams && customParams.removeLabel;
 
-        const customParams = params.jobParams && params.jobParams.customParams;
-        const removeLabel = customParams && customParams.removeLabel;
-
-        function releaseLock() {
-            if (removeLabel) {
-                try {
-                    jira_remove_label({ key: ticketKey, label: removeLabel });
-                    console.log('Released SM label — will re-check next cycle');
-                } catch (e) {
-                    console.warn('Failed to remove SM label:', e);
-                }
+    function releaseLock() {
+        if (ticketKey && removeLabel) {
+            try {
+                jira_remove_label({ key: ticketKey, label: removeLabel });
+                console.log('Released SM label — will re-check next cycle');
+            } catch (e) {
+                console.warn('Failed to remove SM label:', e);
             }
         }
+    }
+
+    try {
+        if (!ticketKey) throw new Error('params.ticket.key is missing');
+        console.log('=== BA readiness check for', ticketKey, '===');
 
         // Fetch subtasks via JQL — jira_search_by_jql returns a plain array
         const subtasks = jira_search_by_jql({
@@ -72,6 +73,7 @@ function action(params) {
 
     } catch (error) {
         console.error('❌ Error in checkSubtasksDoneForBA:', error);
+        releaseLock();
         return { success: false, error: error.toString() };
     }
 }
