@@ -233,18 +233,9 @@ function action(params) {
 
         const result = developTicket.action(params);
 
-        // Remove SM idempotency label after PR creation
+        // Always remove SM idempotency label — even on failure — to avoid permanent lock
         // (developTicketAndCreatePR doesn't know about SM labels)
-        if (result.success) {
-            const customParams = params.jobParams && params.jobParams.customParams;
-            const removeLabel = customParams && customParams.removeLabel;
-            if (removeLabel) {
-                try {
-                    jira_remove_label({ key: ticketKey, label: removeLabel });
-                    console.log('✅ Removed SM label:', removeLabel);
-                } catch (e) {}
-            }
-        }
+        removeLabels(ticketKey, params);
 
         return result;
 

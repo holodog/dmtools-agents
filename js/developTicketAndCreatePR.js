@@ -668,6 +668,17 @@ function action(params) {
             console.error('Failed to post error comment:', commentError);
         }
 
+        // Always remove SM idempotency label on failure to prevent permanent lock
+        try {
+            const actualParams = params.jobParams || params;
+            const customParams = actualParams && actualParams.customParams;
+            const removeLabel = customParams && customParams.removeLabel;
+            if (removeLabel && actualParams.ticket && actualParams.ticket.key) {
+                jira_remove_label({ key: actualParams.ticket.key, label: removeLabel });
+                console.log('✅ Removed SM label on failure:', removeLabel);
+            }
+        } catch (e) {}
+
         return {
             success: false,
             error: error.toString()
