@@ -22,13 +22,13 @@
     ],
     "outputType" : "none",
     "ticketContextDepth" : 0,
-    "cleanupInputFolder": true,
+    "cleanupInputFolder": false,
     "attachResponseAsFile" : false,
     "skipAIProcessing" : true,
     "alwaysPostComments": true,
     "preJSAction" : "agents/js/checkWipLabel.js",
     "preCliJSAction" : "agents/js/fetchEpicsToInput.js",
     "postJSAction" : "agents/js/createIntakeTickets.js",
-    "inputJql" : "key in (JD-49)"
+    "inputJql" : "key in (MYTUBE-4)"
   }
 }

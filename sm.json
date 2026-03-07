@@ -160,22 +160,6 @@
           "configFile": "agents/bug_to_fix_check.json",
           "skipIfLabel": "sm_bug_to_fix_check_triggered",
           "localExecution": true
-        },
-        {
-          "description": "Failed Test Cases → check if all linked Bugs are In Testing → Re-run",
-          "jql": "project = MYTUBE AND issuetype in ('Test Case') AND status in ('Failed')",
-          "configFile": "agents/tc_rerun_trigger.json",
-          "skipIfLabel": "sm_tc_rerun_trigger_triggered",
-          "enabled": false,
-          "localExecution": true
-        },
-        {
-          "description": "Re-run Test Cases → run existing test → Passed / Failed / In Review",
-          "jql": "project = MYTUBE AND issuetype in ('Test Case') AND status in ('Re-run')",
-          "configFile": "agents/tc_rerun.json",
-          "skipIfLabel": "sm_tc_rerun_triggered",
-          "addLabel": "sm_tc_rerun_triggered",
-          "enabled": false
         }
       ]
     }

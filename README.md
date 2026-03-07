@@ -110,8 +110,6 @@ flowchart TD
     K -->|"bug_to_fix_check.json<br/>checkBugToFixReady<br/>localExecution"| L{All Bugs Done?}
     L -->|Yes| A
     L -->|No| K
-    H -->|"tc_rerun_trigger.json ❌disabled<br/>checkTCLinkedBugsInTesting"| M([Re-run ❌disabled])
-    M -->|"tc_rerun.json ❌disabled<br/>checkWipLabel → tc_rerun_prompt → postTCRerunResults"| C
 ```
 
 ---
@@ -143,8 +141,6 @@ All rules are defined in `sm.json`. The SM agent evaluates them in order on ever
 | 19 | In Rework Test Cases → trigger pr_test_automation_rework | Test Case status = `In Rework` | `pr_test_automation_rework.json` | dispatch | ✅ |
 | 20 | Failed Test Cases → create or link bug | Test Case status = `Failed` | `bug_creation.json` | dispatch (limit 1) | ✅ |
 | 21 | Bug To Fix Test Cases → all linked Bugs Done → move to Backlog | Test Case status = `Bug To Fix` | `bug_to_fix_check.json` | localExecution | ✅ |
-| 22 | Failed TCs → check if linked Bugs In Testing → Re-run | Test Case status = `Failed` | `tc_rerun_trigger.json` | localExecution | ❌ disabled |
-| 23 | Re-run Test Cases → run existing test → Passed/Failed/In Review | Test Case status = `Re-run` | `tc_rerun.json` | dispatch | ❌ disabled |
 
 ---
 
@@ -160,7 +156,6 @@ All config files live in the `agents/js/` directory and are consumed by the `ai-
 | `bug_merged.json` | Teammate (skipAI) | Handle a Bug that has been merged — transition to Ready For Testing and populate RCA/Solution via Gemini | — | — | `notifyBugMerged.js` |
 | `bug_test_cases_generator.json` | TestCasesGenerator | Generate structured Jira test cases from a Bug description after it moves to Ready For Testing | — | `moveToReadyForTesting.js` | `moveToDone.js` |
 | `bug_to_fix_check.json` | Teammate (skipAI) | Check if all bugs linked to a "Bug To Fix" Test Case are Done; if so, move TC back to Backlog | — | — | `checkBugToFixReady.js` |
-| `intake.json` | Teammate (skipAI) | Parse intake requests and create Epics/Stories in Jira from AI-structured output | `intake_prompt.md` | `checkWipLabel.js` + `fetchEpicsToInput.js` (preCliJSAction) | `createIntakeTickets.js` |
 | `po_refinement.json` | Teammate (skipAI) | Answer open questions (label `q`) on subtasks by running a PO refinement AI pass | `po_refinement_prompt.md` | — | `closeQuestionTicket.js` |
 | `pr_review.json` | Teammate (skipAI) | Review an open PR, post inline comments, and either approve (add `pr_approved`) or move to In Rework | `pr_review_prompt.md` | `checkWipLabel.js` | `postPRReviewComments.js` |
 | `pr_rework.json` | Teammate (skipAI) | Apply the reviewer's feedback to the branch and push updated commits | `pr_rework_prompt.md` | `checkWipLabel.js` | `pushReworkChanges.js` |
@@ -175,8 +170,6 @@ All config files live in the `agents/js/` directory and are consumed by the `ai-
 | `story_done_check.json` | Teammate (skipAI) | Check whether all test cases for a Story in In Testing have passed, then transition to Done | — | — | `checkStoryTestsPassed.js` |
 | `story_questions.json` | Teammate (skipAI) | Generate clarification question subtasks for a Backlog story and assign it for PO Review | `questions_prompt.md` | `fetchQuestionsToInput.js` | `createQuestionsAndAssignForReview.js` |
 | `story_solution.json` | Teammate (skipAI) | Write a solution design document and architecture diagrams for a story in Solution Architecture | `story_solution_prompt.md` | `checkWipLabel.js` | `writeSolutionAndDiagrams.js` |
-| `tc_rerun.json` | Teammate (skipAI) | Re-execute an existing automated test and transition TC to Passed, Failed, or In Review | `tc_rerun_prompt.md` | `checkWipLabel.js` | `postTCRerunResults.js` |
-| `tc_rerun_trigger.json` | Teammate (skipAI) | Check if all bugs linked to a Failed TC are now In Testing, and if so queue a re-run | — | — | `checkTCLinkedBugsInTesting.js` |
 | `test_case_automation.json` | Teammate (skipAI) | Write automated test code for a Backlog Test Case and push to a branch for review | `test_case_automation_prompt.md` | `checkWipLabel.js` | `postTestAutomationResults.js` |
 | `test_cases_generator.json` | TestCasesGenerator | Generate structured Jira test cases from a merged Story and move ticket to In Testing | — | `moveToReadyForTesting.js` | `moveToInTesting.js` |
 | `workflow_failure_reporter.json` | JSRunner | Monitor GitHub Actions workflow runs and create/update Jira bugs for CI failures | — | — | `workflowFailureReporter.js` (jsPath) |
@@ -216,10 +209,8 @@ All scripts are located in `agents/js/`.
 | Script | Description |
 |--------|-------------|
 | `postTestAutomationResults.js` | Parses the CLI agent's test automation output, commits generated test code to a branch, creates a PR, and moves the Test Case to `In Review-Passed` or `In Review-Failed`. |
-| `postTCRerunResults.js` | Runs an existing automated test via the CLI agent, parses results, and transitions the Test Case to `Passed`, `Failed`, or `In Review`. |
 | `postBugCreation.js` | Parses the AI decision for a Failed Test Case: `create` (create a new Jira Bug and link it), `link` (link an existing Bug), `none` (no bug needed), or `tests_pass` (mark TC as Passed). |
 | `checkBugToFixReady.js` | Fetches all Bugs linked to a "Bug To Fix" Test Case and checks if every one is in `Done`. If so, transitions the TC back to `Backlog` for re-automation. |
-| `checkTCLinkedBugsInTesting.js` | Checks whether all Bugs linked to a `Failed` TC have moved to `In Testing`, indicating the fixes are ready to be verified — triggers a re-run if true. |
 | `checkStoryTestsPassed.js` | Checks whether all Test Case subtasks of a Story in `In Testing` have status `Passed`. If yes, transitions the Story to `Done`. |
 | `checkBugTestsPassed.js` | Same as above but for Bugs. |
 
@@ -387,5 +378,5 @@ Backlog → Ready For Development → In Development → In Review → [In Rewor
 ### Test Cases
 ```
 Backlog → In Development → In Review (Passed or Failed) → [In Rework]
-→ Passed / Failed → [Bug To Fix] → Re-run
+→ Passed / Failed → [Bug To Fix]
 ```
