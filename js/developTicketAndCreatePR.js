@@ -284,10 +284,30 @@ function createPullRequest(title, branchName) {
         };
 
     } catch (error) {
-        console.error('Failed to create Pull Request:', error);
+        const errMsg = error.toString();
+        console.error('Failed to create Pull Request:', errMsg);
+
+        // If PR already exists for this branch — find it and treat as success
+        // (happens when development was interrupted after PR creation but before status move)
+        if (errMsg.indexOf('already exists') !== -1 || errMsg.indexOf('pull request for branch') !== -1) {
+            console.log('PR already exists for branch', branchName, '— looking up existing PR URL...');
+            try {
+                const existingPrUrl = cli_execute_command({
+                    command: 'gh pr list --head ' + branchName + ' --json url --jq ".[0].url"'
+                }) || '';
+                const cleanedExistingUrl = cleanCommandOutput(existingPrUrl);
+                if (cleanedExistingUrl && cleanedExistingUrl.startsWith('https://')) {
+                    console.log('✅ Found existing PR:', cleanedExistingUrl);
+                    return { success: true, prUrl: cleanedExistingUrl, alreadyExisted: true };
+                }
+            } catch (lookupErr) {
+                console.warn('Failed to look up existing PR URL:', lookupErr);
+            }
+        }
+
         return {
             success: false,
-            error: error.toString()
+            error: errMsg
         };
     }
 }
@@ -428,6 +448,41 @@ function action(params) {
 
         console.log('Processing development workflow for ticket:', ticketKey);
         console.log('Ticket summary:', ticketSummary);
+
+        // ── Early exit: PR already open for this branch ──────────────────────
+        // If a PR already exists, a previous run created it but failed to move
+        // the ticket to In Review. Move now and skip re-development.
+        const expectedBranch = 'ai/' + ticketKey;
+        try {
+            const existingPrJson = cli_execute_command({
+                command: 'gh pr list --head ' + expectedBranch + ' --state open --json url,number --jq ".[0]"'
+            }) || '';
+            const cleanedPrJson = existingPrJson.split('\n').filter(function(l) {
+                return l.trim() && l.indexOf('Script started') === -1 && l.indexOf('Script done') === -1;
+            }).join('').trim();
+            if (cleanedPrJson && cleanedPrJson !== 'null') {
+                let existingPr = null;
+                try { existingPr = JSON.parse(cleanedPrJson); } catch (e) {}
+                if (existingPr && existingPr.url) {
+                    console.log('⚠️  PR already open for', ticketKey, ':', existingPr.url, '— skipping re-development');
+                    try {
+                        jira_post_comment({
+                            key: ticketKey,
+                            comment: 'h3. ℹ️ PR Already Open\n\n' +
+                                'A pull request already exists for this ticket: ' + existingPr.url + '\n\n' +
+                                'Moved ticket to *In Review* for review.'
+                        });
+                    } catch (e) {}
+                    try {
+                        jira_move_to_status({ key: ticketKey, statusName: STATUSES.IN_REVIEW });
+                        console.log('✅ Moved', ticketKey, 'to In Review');
+                    } catch (e) { console.warn('Failed to move to In Review:', e); }
+                    return { success: true, path: 'pr_already_open', ticketKey };
+                }
+            }
+        } catch (prCheckErr) {
+            console.warn('Could not check existing PRs (non-fatal):', prCheckErr);
+        }
 
         // Configure git author
         if (!configureGitAuthor()) {

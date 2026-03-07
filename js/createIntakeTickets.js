@@ -86,6 +86,39 @@ function setStoryPoints(key, entry) {
 }
 
 /**
+ * Create an Bug in Jira from an intake entry.
+ * After creation, moves the bug directly to Ready For Development.
+ * @param {Object} entry - Entry from stories.json with type === 'Bug'
+ * @param {string} projectKey - Jira project key
+ * @returns {string|null} Created ticket key or null on failure
+ */
+function createBug(entry, projectKey) {
+    var summary = buildSummary(entry.summary, 0);
+    var description = readDescriptionFile(entry.description, summary);
+
+    try {
+        var bugFields = {
+            summary: summary,
+            description: description,
+            issuetype: { name: ISSUE_TYPES.BUG }
+        };
+        if (entry.priority) {
+            bugFields.priority = { name: entry.priority };
+        }
+        var result = jira_create_ticket_with_json({
+            project: projectKey,
+            fieldsJson: bugFields
+        });
+        var key = extractTicketKey(result);
+        console.log('Created Bug: ' + (key || '(unknown key)') + ' - ' + summary);
+        return key;
+    } catch (error) {
+        console.error('Failed to create Bug "' + summary + '":', error);
+        return null;
+    }
+}
+
+/**
  * Create an Epic in Jira
  * @param {Object} entry - Entry from stories.json (no parent)
  * @param {string} projectKey - Jira project key
@@ -222,8 +255,45 @@ function action(params) {
         var tempIdMap = {}; // maps "temp-X" / "epic-X" -> actual Jira key
         var keyMap = {};   // maps tempId OR real key -> actual Jira key (for dependency resolution)
 
-        // 2. PASS 1: Create all Epics (entries with no parent or parent=null)
+        // 2. PASS 0: Create all Bugs (entries with type === 'Bug')
+        // Bugs are standalone — no parent, no tempId resolution needed,
+        // moved directly to Ready For Development after creation.
         stories.forEach(function(entry) {
+            if (entry.type !== 'Bug') return;
+
+            var key = createBug(entry, projectKey);
+            var summary = buildSummary(entry.summary, 0);
+
+            if (key) {
+                if (entry.tempId) {
+                    tempIdMap[entry.tempId] = key;
+                    keyMap[entry.tempId] = key;
+                }
+                keyMap[key] = key;
+
+                // Move bug to Ready For Development so SM picks it up immediately
+                try {
+                    jira_move_to_status({ key: key, statusName: STATUSES.READY_FOR_DEVELOPMENT });
+                    console.log('Moved Bug ' + key + ' to Ready For Development');
+                } catch (e) {
+                    console.warn('Failed to move bug ' + key + ' to Ready For Development:', e);
+                }
+            }
+
+            entry._createdKey = key;
+            linkToSource(key, ticketKey);
+            results.push({
+                type: 'Bug',
+                summary: summary,
+                key: key,
+                success: !!key,
+                error: key ? null : 'Creation failed (see logs)'
+            });
+        });
+
+        // 3. PASS 1: Create all Epics (entries with no parent or parent=null, not Bug type)
+        stories.forEach(function(entry) {
+            if (entry.type === 'Bug') return; // already handled in pass 0
             if (!entry.parent) {
                 var key = createEpic(entry, projectKey);
                 var summary = buildSummary(entry.summary, 0);
@@ -246,8 +316,9 @@ function action(params) {
             }
         });
 
-        // 3. PASS 2: Create all Stories (entries with parent set)
+        // 4. PASS 2: Create all Stories (entries with parent set)
         stories.forEach(function(entry) {
+            if (entry.type === 'Bug') return; // already handled in pass 0
             if (entry.parent) {
                 var resolvedParent = entry.parent;
                 // Resolve tempIds (e.g. "epic-1", "temp-1") to actual Jira keys via keyMap

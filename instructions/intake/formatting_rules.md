@@ -12,6 +12,13 @@
   - `"storyPoints"` — integer, Stories only (1–2 simple, 3–5 medium, 8–13 complex); max 5 SP — split if larger; omit for Epics
   - `"blockedBy"` — optional array of tempIds or real Jira keys this story cannot start until they are done. Creates "is blocked by" links and sets status to Blocked. Example: `["temp-1", "PROJECT-5"]`
   - `"integrates"` — optional array of tempIds or real Jira keys of parallel stories that will be combined with this one. Creates "Relates" links. Use when two parallel streams must eventually be merged. Example: `["temp-2"]`
+- **Bug entries** — use when the intake describes a broken/malfunctioning existing feature (not a new feature):
+  - `"type": "Bug"` — required, signals this is a bug ticket
+  - No `"parent"` — bugs are top-level tickets
+  - `"summary"`, `"description"`, `"priority"` — same as stories
+  - No `"storyPoints"`, `"blockedBy"`, `"integrates"` — not applicable
+  - Bug is automatically moved to *Ready For Development* after creation
+  - Example: `{ "type": "Bug", "summary": "Video playback freezes on iOS Safari", "description": "outputs/stories/bug-1.md", "priority": "High" }`
 - No trailing commas, no comments inside JSON
 
 ## outputs/comment.md

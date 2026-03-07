@@ -55,6 +55,43 @@ function action(params) {
 
         console.log('=== Bug development post-action for', ticketKey, '===');
 
+        // ── Path 0: PR already open — skip re-development ───────────────────
+        // If a PR already exists for this ticket's branch, the previous run created
+        // it but failed to move the ticket to In Review (e.g. was interrupted).
+        // Move to In Review now and skip development entirely.
+        const expectedBranch = 'ai/' + ticketKey;
+        try {
+            const existingPrJson = cli_execute_command({
+                command: 'gh pr list --head ' + expectedBranch + ' --state open --json url,number --jq ".[0]"'
+            }) || '';
+            const cleanedPrJson = existingPrJson.split('\n').filter(function(l) {
+                return l.trim() && l.indexOf('Script started') === -1 && l.indexOf('Script done') === -1;
+            }).join('').trim();
+            if (cleanedPrJson && cleanedPrJson !== 'null') {
+                let existingPr = null;
+                try { existingPr = JSON.parse(cleanedPrJson); } catch (e) {}
+                if (existingPr && existingPr.url) {
+                    console.log('⚠️  PR already open for', ticketKey, ':', existingPr.url, '— skipping re-development');
+                    try {
+                        jira_post_comment({
+                            key: ticketKey,
+                            comment: 'h3. ℹ️ PR Already Open\n\n' +
+                                'A pull request already exists for this ticket: ' + existingPr.url + '\n\n' +
+                                'Moved ticket to *In Review* for review.'
+                        });
+                    } catch (e) {}
+                    try {
+                        jira_move_to_status({ key: ticketKey, statusName: STATUSES.IN_REVIEW });
+                        console.log('✅ Moved', ticketKey, 'to In Review');
+                    } catch (e) { console.warn('Failed to move to In Review:', e); }
+                    removeLabels(ticketKey, params);
+                    return { success: true, path: 'pr_already_open', ticketKey };
+                }
+            }
+        } catch (prCheckErr) {
+            console.warn('Could not check existing PRs (non-fatal):', prCheckErr);
+        }
+
         // ── Path 1: Blocked ──────────────────────────────────────────────────
         const blocked = readJson('outputs/blocked.json');
         if (blocked) {

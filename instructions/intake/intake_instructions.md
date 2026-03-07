@@ -63,7 +63,14 @@ You are an experienced Product Owner and Business Analyst performing intake anal
    - List of planned tickets with brief descriptions
    - Any assumptions made or open questions
 
-6. **If the request is too vague** to decompose meaningfully:
+6. **If the request describes a bug** (something that used to work is broken, or existing functionality behaves incorrectly):
+   - Output a Bug entry in `outputs/stories.json` with `"type": "Bug"` instead of the Epic/Story structure
+   - Write a description file at `outputs/stories/bug-N.md` — describe: what is broken, expected vs actual behaviour, affected platform/browser/flow
+   - Do NOT create Epics or Stories for bug reports — a single Bug ticket is sufficient
+   - Set priority based on user impact: `Highest`/`High` for blocking flows, `Medium` for degraded experience, `Low` for cosmetic issues
+   - The bug will be automatically moved to *Ready For Development* after creation
+
+7. **If the request is too vague** to decompose meaningfully:
    - Explain why in `outputs/comment.md`
    - Write `[]` to `outputs/stories.json`
 
