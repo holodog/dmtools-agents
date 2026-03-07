@@ -113,7 +113,7 @@
           "jql": "project = MYTUBE AND issuetype in ('Story') AND status in ('In Testing')",
           "configFile": "agents/story_done_check.json",
           "skipIfLabel": "sm_story_done_check_triggered",
-          "enabled": false,
+          "enabled": true,
           "localExecution": true
         },
         {
