@@ -94,10 +94,11 @@ function performGitOperations(branchName, commitMessage) {
         });
 
         console.log('Pushing to remote...');
-        try {
-            cli_execute_command({ command: 'git push -u origin ' + branchName });
-        } catch (e) {
-            console.log('Normal push failed, force pushing...');
+        var pushOutput = cleanCommandOutput(
+            cli_execute_command({ command: 'git push -u origin ' + branchName }) || ''
+        );
+        if (pushOutput.indexOf('rejected') !== -1 || pushOutput.indexOf('error: failed to push') !== -1) {
+            console.log('Normal push rejected, force pushing...');
             cli_execute_command({ command: 'git push -u origin ' + branchName + ' --force' });
         }
 
