@@ -20,6 +20,12 @@ function action(params) {
             statusName: STATUSES.DONE
         });
 
+        try {
+            jira_remove_label({ key: ticketKey, label: 'sm_bug_test_cases_triggered' });
+        } catch (e) {
+            console.log('Label sm_bug_test_cases_triggered not found or already removed');
+        }
+
         jira_post_comment({
             key: ticketKey,
             comment: 'Test cases generated. Bug marked as Done. If regression is detected, a new bug will be created automatically.'

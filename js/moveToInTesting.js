@@ -19,6 +19,12 @@ function action(params) {
             statusName: STATUSES.IN_TESTING
         });
 
+        try {
+            jira_remove_label({ key: ticketKey, label: 'sm_test_cases_triggered' });
+        } catch (e) {
+            console.log('Label sm_test_cases_triggered not found or already removed');
+        }
+
         console.log('✅ ' + ticketKey + ' moved to ' + STATUSES.IN_TESTING);
 
         return {
