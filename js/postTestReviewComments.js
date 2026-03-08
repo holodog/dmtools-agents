@@ -246,14 +246,10 @@ function action(params) {
             jira_remove_label({ key: ticketKey, label: wipLabel });
         } catch (e) {}
 
-        const customParams = params.jobParams && params.jobParams.customParams;
-        const removeLabel = customParams && customParams.removeLabel;
-        if (removeLabel) {
-            try {
-                jira_remove_label({ key: ticketKey, label: removeLabel });
-                console.log('✅ Removed SM label:', removeLabel);
-            } catch (e) {}
-        }
+        try {
+            jira_remove_label({ key: ticketKey, label: 'sm_test_review_triggered' });
+            console.log('✅ Removed SM label: sm_test_review_triggered');
+        } catch (e) {}
 
         var finalStatus;
         if (isApproved && !mergeSucceeded) {
@@ -275,6 +271,12 @@ function action(params) {
 
     } catch (error) {
         console.error('❌ Error in postTestReviewComments:', error);
+        try {
+            const ticketKey = params.ticket ? params.ticket.key : (params.inputFolderPath ? params.inputFolderPath.split('/').pop() : null);
+            if (ticketKey) {
+                jira_remove_label({ key: ticketKey, label: 'sm_test_review_triggered' });
+            }
+        } catch (e) {}
         try {
             jira_post_comment({
                 key: params.ticket.key,
