@@ -5,6 +5,7 @@
  */
 
 const { GIT_CONFIG, STATUSES } = require('./config.js');
+const fetchLinkedBugsToInput = require('./fetchLinkedBugsToInput.js');
 
 function cleanCommandOutput(output) {
     if (!output) return '';
@@ -104,6 +105,14 @@ function action(params) {
             checkoutBranch(ticketKey);
         } catch (e) {
             console.error('Branch checkout failed (non-fatal):', e);
+        }
+
+        // Step 3: Fetch linked bugs (with fix comments) into input folder
+        // This gives the test agent context about HOW bugs were fixed (timing, delays, etc.)
+        try {
+            fetchLinkedBugsToInput.action(actualParams);
+        } catch (e) {
+            console.warn('fetchLinkedBugsToInput failed (non-fatal):', e);
         }
 
         console.log('✅ Test automation setup complete for', ticketKey);

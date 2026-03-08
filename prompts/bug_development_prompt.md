@@ -4,7 +4,12 @@ User request is in 'input' folder, read all files there and do what is requested
 1. `instruction.md` (repo root) — **read this first**: project stack, deployment constraints, approved frameworks, and infrastructure access. All implementation decisions must respect the constraints defined here.
 2. `request.md` — full bug ticket: description, steps to reproduce, expected vs actual behaviour, environment, any linked commits
 3. `comments.md` *(if present)* — ticket comment history with additional context, prior analysis, or linked PR information
-4. `existing_questions.json` — if present, clarification answers from the PO — treat as binding requirements
+4. `linked_tests.md` *(if present)* — **CRITICAL**: linked test cases that are failing and triggered this bug report.
+   - Read the **test steps and assertions** carefully — your fix must satisfy exactly what the test checks.
+   - Read the **test run comments** to understand prior fix attempts and why they didn't work.
+   - If a previous comment says "Bug Already Fixed" but the test is still failing, the fix was **incomplete or the test has timing/async requirements** that the code doesn't yet satisfy.
+   - Before writing `already_fixed.json`, verify the linked test actually passes with the current code.
+5. `existing_questions.json` — if present, clarification answers from the PO — treat as binding requirements
 
 ## ⚠️ CRITICAL: Understand the bug BEFORE looking at code
 
@@ -52,6 +57,8 @@ Then write a short summary to `outputs/response.md` and **stop — no code chang
 > - The fix addressed a **different root cause** — this is a new manifestation of the same symptom
 > - The "fix" was incomplete — it works in some cases but **not the one described in this ticket**
 > - The ticket was created from a **failed test run** that ran against the unfixed version
+>
+> **If `linked_tests.md` is present**: run the linked test(s) FIRST. Only write `already_fixed.json` if the test actually passes. A fix that's in git but doesn't pass the automated test is **not done**.
 >
 > Only write `already_fixed.json` if you are **certain** the exact scenario in this ticket is fully resolved AND the fix was deployed before the ticket was created. When in doubt — fix it.
 

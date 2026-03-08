@@ -10,6 +10,7 @@
 
 const { GIT_CONFIG, STATUSES } = require('./config.js');
 const fetchQuestionsToInput = require('./fetchQuestionsToInput.js');
+const fetchLinkedTestsToInput = require('./fetchLinkedTestsToInput.js');
 
 /**
  * Clean command output from script wrapper artifacts
@@ -131,6 +132,14 @@ function action(params) {
 
         // 3. Fetch questions with answers into input folder
         fetchQuestionsToInput.action(actualParams);
+
+        // 4. Fetch linked test cases (with failure comments) into input folder
+        // Gives the bug agent context about what the test asserts and why it's failing
+        try {
+            fetchLinkedTestsToInput.action(actualParams);
+        } catch (e) {
+            console.warn('fetchLinkedTestsToInput failed (non-fatal):', e);
+        }
 
     } catch (error) {
         console.error('Error in preCliDevelopmentSetup:', error);
