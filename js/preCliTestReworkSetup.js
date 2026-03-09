@@ -6,6 +6,7 @@
 
 const gh = require('./common/githubHelpers.js');
 const fetchQuestionsToInput = require('./fetchQuestionsToInput.js');
+const fetchLinkedBugsToInput = require('./fetchLinkedBugsToInput.js');
 
 function findTestPRForTicket(workspace, repository, ticketKey) {
     try {
@@ -171,6 +172,14 @@ function action(params) {
             fetchQuestionsToInput.action(actualParams);
         } catch (e) {
             console.warn('Failed to fetch questions (non-fatal):', e);
+        }
+
+        // Step 7b: Fetch linked bugs (with fix comments) — rework agent needs to know
+        // HOW the bug was fixed (timing, delays) so the test properly accounts for it
+        try {
+            fetchLinkedBugsToInput.action(actualParams);
+        } catch (e) {
+            console.warn('Failed to fetch linked bugs (non-fatal):', e);
         }
 
         // Step 8: Jira comment

@@ -3,12 +3,16 @@ User request is in the 'input' folder. Read all files there.
 **IMPORTANT**: Read in order:
 1. `request.md` *(if present)* — full ticket details
 2. `comments.md` *(if present)* — ticket comment history; recent comments contain previous test run results and review feedback
-3. `ticket.md` — the Test Case ticket (objective, steps, expected result)
-4. `pr_info.md` — PR metadata
-3. `pr_diff.txt` — current test code
-4. `merge_conflicts.md` *(if present)* — **Resolve all merge conflicts FIRST** before touching anything else
-5. `pr_discussions.md` — review comments that must be addressed
-6. `pr_discussions_raw.json` — structured thread data with IDs for replies
+3. `linked_bugs.md` *(if present)* — **CRITICAL**: linked bugs that block or relate to this test case.
+   - Read the **Solution** field and **AI Fix Comments** carefully — they describe HOW the bug was fixed.
+   - If the fix introduced **timing or async behavior** (e.g., a heartbeat probe with an interval, retry delay, polling timeout) — the test **MUST** wait long enough to observe the effect. Do NOT assert immediately after triggering the action.
+   - Example: if the bug was fixed by a heartbeat probe that runs every 5 seconds, the test must wait at least 5–10 seconds after simulating the failure condition before asserting the error appears.
+4. `ticket.md` — the Test Case ticket (objective, steps, expected result)
+5. `pr_info.md` — PR metadata
+6. `pr_diff.txt` — current test code
+7. `merge_conflicts.md` *(if present)* — **Resolve all merge conflicts FIRST** before touching anything else
+8. `pr_discussions.md` — review comments that must be addressed
+9. `pr_discussions_raw.json` — structured thread data with IDs for replies
 
 **If `merge_conflicts.md` is present**: Resolve every `<<<<<<<` / `=======` / `>>>>>>>` conflict marker in the listed files, then `git add <file>` for each. Do NOT `git commit` or `git merge --abort`.
 
