@@ -69,6 +69,58 @@ function readDescriptionFile(filePath, fallbackSummary) {
 }
 
 /**
+ * Get MIME content type from file extension
+ * @param {string} filePath
+ * @returns {string} MIME type
+ */
+function getContentType(filePath) {
+    var ext = filePath.split('.').pop().toLowerCase();
+    var types = {
+        'pdf':  'application/pdf',
+        'png':  'image/png',
+        'jpg':  'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'gif':  'image/gif',
+        'webp': 'image/webp',
+        'svg':  'image/svg+xml',
+        'zip':  'application/zip',
+        'doc':  'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls':  'application/vnd.ms-excel',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'txt':  'text/plain',
+        'md':   'text/markdown',
+        'json': 'application/json',
+        'mp4':  'video/mp4',
+        'mov':  'video/quicktime'
+    };
+    return types[ext] || 'application/octet-stream';
+}
+
+/**
+ * Attach files listed in entry.attachments to a created ticket
+ * @param {string} key - Jira ticket key
+ * @param {Object} entry - Entry from stories.json
+ */
+function attachFilesToTicket(key, entry) {
+    if (!key || !Array.isArray(entry.attachments) || entry.attachments.length === 0) return;
+    entry.attachments.forEach(function(filePath) {
+        try {
+            var fileName = filePath.split('/').pop();
+            jira_attach_file_to_ticket({
+                ticketKey: key,
+                name: fileName,
+                filePath: filePath,
+                contentType: getContentType(filePath)
+            });
+            console.log('Attached ' + fileName + ' to ' + key);
+        } catch (error) {
+            console.warn('Failed to attach ' + filePath + ' to ' + key + ':', error);
+        }
+    });
+}
+
+/**
  * Set Story Points on a ticket after creation (field is not on create screen)
  */
 function setStoryPoints(key, entry) {
@@ -281,6 +333,7 @@ function action(params) {
             }
 
             entry._createdKey = key;
+            attachFilesToTicket(key, entry);
             linkToSource(key, ticketKey);
             results.push({
                 type: 'Bug',
@@ -304,6 +357,7 @@ function action(params) {
                 }
                 if (key) keyMap[key] = key;
                 entry._createdKey = key; // track for pass 4
+                attachFilesToTicket(key, entry);
                 linkToSource(key, ticketKey);
                 setStoryPoints(key, entry);
                 results.push({
@@ -344,6 +398,7 @@ function action(params) {
                     keyMap[key] = key;
                 }
                 entry._createdKey = key; // track for pass 4
+                attachFilesToTicket(key, entry);
                 linkToSource(key, ticketKey);
                 setStoryPoints(key, entry);
                 results.push({
