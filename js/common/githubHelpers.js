@@ -114,73 +114,38 @@ function getPRDiff(baseBranch, headBranch) {
     try {
         console.log('Generating diff between', baseBranch, 'and', headBranch);
 
-        // Compute the merge-base to use as diff base (consistent across all strategies)
-        const originBase = baseBranch.indexOf('origin/') === 0 ? baseBranch : 'origin/' + baseBranch;
-        let mergeBase = '';
-        try {
-            mergeBase = cleanCommandOutput(
-                cli_execute_command({ command: 'git merge-base ' + originBase + ' ' + headBranch }) || ''
-            ).trim();
-        } catch (e) {
-            console.warn('Could not compute merge-base:', e.message || e);
-        }
-
-        // Determine which files were actually touched by non-merge commits on this branch.
-        // This prevents files brought in via "Merge branch 'main'" from polluting the diff
-        // and being flagged as out-of-scope by the reviewer.
-        let featureFiles = [];
-        if (mergeBase) {
-            try {
-                const logOutput = cleanCommandOutput(
-                    cli_execute_command({
-                        command: 'git log --no-merges --name-only --format="" ' + mergeBase + '..' + headBranch
-                    }) || ''
-                );
-                featureFiles = logOutput.split('\n')
-                    .map(function(f) { return f.trim(); })
-                    .filter(function(f) { return f.length > 0; })
-                    .filter(function(f, i, arr) { return arr.indexOf(f) === i; }); // dedupe
-                console.log('Non-merge commit files (' + featureFiles.length + '):', featureFiles.slice(0, 10).join(', ') + (featureFiles.length > 10 ? '...' : ''));
-            } catch (e) {
-                console.warn('Could not list non-merge commit files:', e.message || e);
-            }
-        }
-
-        // Build the scoped diff command — limit to feature-only files when available
-        const fileSuffix = featureFiles.length > 0
-            ? ' -- ' + featureFiles.map(function(f) { return '"' + f + '"'; }).join(' ')
-            : '';
-
         // First try three-dot diff (shows only changes on headBranch since divergence)
         try {
-            const cmd = 'git diff ' + baseBranch + '...' + headBranch + fileSuffix;
-            const diff = cli_execute_command({ command: cmd }) || '';
-            console.log('Diff size:', diff.length, 'chars', fileSuffix ? '(scoped to ' + featureFiles.length + ' files)' : '');
+            const diff = cli_execute_command({ command: 'git diff ' + baseBranch + '...' + headBranch }) || '';
+            console.log('Diff size:', diff.length, 'chars');
             return cleanCommandOutput(diff);
         } catch (e1) {
-            console.warn('Three-dot diff failed, trying with origin/ prefix:', e1.message || e1);
+            console.warn('Three-dot diff failed (likely no merge base), trying with origin/ prefix:', e1.message || e1);
         }
 
         // Fallback: try with explicit origin/ prefix on base branch
         try {
-            const cmd = 'git diff ' + originBase + '...' + headBranch + fileSuffix;
-            const diff = cli_execute_command({ command: cmd }) || '';
+            const originBase = baseBranch.indexOf('origin/') === 0 ? baseBranch : 'origin/' + baseBranch;
+            const diff = cli_execute_command({ command: 'git diff ' + originBase + '...' + headBranch }) || '';
             console.log('Diff size (origin fallback):', diff.length, 'chars');
             return cleanCommandOutput(diff);
         } catch (e2) {
             console.warn('Origin-prefix diff also failed, trying merge-base approach:', e2.message || e2);
         }
 
-        // Last resort: diff from explicit merge-base
-        if (mergeBase) {
-            try {
-                const cmd = 'git diff ' + mergeBase + '..' + headBranch + fileSuffix;
-                const diff = cli_execute_command({ command: cmd }) || '';
+        // Last resort: find explicit merge-base commit and diff from there
+        try {
+            const originBase = baseBranch.indexOf('origin/') === 0 ? baseBranch : 'origin/' + baseBranch;
+            const mergeBase = cleanCommandOutput(
+                cli_execute_command({ command: 'git merge-base ' + originBase + ' ' + headBranch }) || ''
+            );
+            if (mergeBase && mergeBase.trim().length > 0) {
+                const diff = cli_execute_command({ command: 'git diff ' + mergeBase.trim() + '...' + headBranch }) || '';
                 console.log('Diff size (merge-base fallback):', diff.length, 'chars');
                 return cleanCommandOutput(diff);
-            } catch (e3) {
-                console.warn('Merge-base diff also failed:', e3.message || e3);
             }
+        } catch (e3) {
+            console.warn('Merge-base diff also failed:', e3.message || e3);
         }
 
         console.error('All diff strategies failed for', baseBranch, '...', headBranch);
