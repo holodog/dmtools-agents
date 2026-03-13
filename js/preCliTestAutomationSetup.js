@@ -38,41 +38,56 @@ function checkoutBranch(ticketKey) {
         cli_execute_command({ command: 'git branch --list "' + branchName + '"' }) || ''
     );
 
-    if (localBranches.trim()) {
-        console.log('Branch exists locally, rebasing from main:', branchName);
-        cli_execute_command({ command: 'git checkout ' + branchName });
+    /**
+     * Bring the current branch up-to-date with main.
+     * Strategy:
+     *   1. Try rebase — if it fails only due to the 'agents' submodule pointer,
+     *      auto-resolve it (main's version always wins for test branches) and continue.
+     *   2. If rebase still fails for any other reason, abort and fall back to
+     *      'git merge origin/main --no-edit' so we keep all existing test code.
+     * NOTE: never do 'git reset --hard origin/main' on an existing branch — that
+     *       diverges the local branch from its remote counterpart and breaks commits.
+     */
+    function syncWithMain() {
+        var base = 'origin/' + GIT_CONFIG.DEFAULT_BASE_BRANCH;
         try {
-            var rebaseOutput = cleanCommandOutput(
-                cli_execute_command({ command: 'git rebase origin/' + GIT_CONFIG.DEFAULT_BASE_BRANCH }) || ''
-            );
-            if (rebaseOutput.indexOf('CONFLICT') !== -1) {
-                throw new Error('Rebase conflict detected: ' + rebaseOutput.substring(0, 200));
-            }
+            cli_execute_command({ command: 'git rebase ' + base });
+            console.log('✅ Rebase succeeded');
         } catch (rebaseErr) {
-            console.warn('Rebase failed, resetting to main:', rebaseErr);
-            try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
-            cli_execute_command({ command: 'git reset --hard origin/' + GIT_CONFIG.DEFAULT_BASE_BRANCH });
+            console.warn('Rebase failed, attempting auto-resolve for agents submodule conflict:', rebaseErr);
+            try {
+                // Auto-resolve: take main's agents pointer (test branches never touch agents)
+                cli_execute_command({ command: 'git checkout --ours agents' });
+                cli_execute_command({ command: 'git add agents' });
+                cli_execute_command({ command: 'git rebase --continue' });
+                console.log('✅ Rebase resumed after resolving agents submodule conflict');
+            } catch (continueErr) {
+                console.warn('Rebase --continue also failed, falling back to merge:', continueErr);
+                try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
+                try {
+                    cli_execute_command({ command: 'git merge ' + base + ' --no-edit' });
+                    console.log('✅ Merged main into branch instead of rebasing');
+                } catch (mergeErr) {
+                    console.warn('Merge also failed — branch may need manual attention:', mergeErr);
+                    try { cli_execute_command({ command: 'git merge --abort' }); } catch (_) {}
+                }
+            }
         }
+    }
+
+    if (localBranches.trim()) {
+        console.log('Branch exists locally, syncing from main:', branchName);
+        cli_execute_command({ command: 'git checkout ' + branchName });
+        syncWithMain();
     } else {
         var remoteBranches = cleanCommandOutput(
             cli_execute_command({ command: 'git ls-remote --heads origin ' + branchName }) || ''
         );
 
         if (remoteBranches.trim()) {
-            console.log('Branch exists on remote, checking out and rebasing from main:', branchName);
+            console.log('Branch exists on remote, checking out and syncing from main:', branchName);
             cli_execute_command({ command: 'git checkout -b ' + branchName + ' origin/' + branchName });
-            try {
-                var rebaseOutput2 = cleanCommandOutput(
-                    cli_execute_command({ command: 'git rebase origin/' + GIT_CONFIG.DEFAULT_BASE_BRANCH }) || ''
-                );
-                if (rebaseOutput2.indexOf('CONFLICT') !== -1) {
-                    throw new Error('Rebase conflict detected: ' + rebaseOutput2.substring(0, 200));
-                }
-            } catch (rebaseErr) {
-                console.warn('Rebase failed, resetting to main:', rebaseErr);
-                try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
-                cli_execute_command({ command: 'git reset --hard origin/' + GIT_CONFIG.DEFAULT_BASE_BRANCH });
-            }
+            syncWithMain();
         } else {
             console.log('Creating new branch from', GIT_CONFIG.DEFAULT_BASE_BRANCH + ':', branchName);
             cli_execute_command({ command: 'git checkout ' + GIT_CONFIG.DEFAULT_BASE_BRANCH });
