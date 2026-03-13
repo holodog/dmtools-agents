@@ -62,30 +62,29 @@ function performGitOperations(branchName, commitMessage) {
         console.log('Staging testing/ folder...');
         cli_execute_command({ command: 'git add testing/' });
 
-        var rawStatus = cli_execute_command({ command: 'git status --porcelain' }) || '';
-        console.log('Raw git status length:', rawStatus.length);
-        var statusOutput = cleanCommandOutput(rawStatus);
-        console.log('Cleaned git status:', statusOutput || '(empty)');
+        // Check for STAGED changes only (git status --porcelain also includes dirty submodule etc.)
+        var stagedOutput = cleanCommandOutput(cli_execute_command({ command: 'git diff --cached --stat' }) || '');
+        console.log('Staged changes:', stagedOutput || '(none)');
 
-        if (!statusOutput || !statusOutput.trim()) {
-            console.warn('No new changes to commit in testing/ (files may already exist on main)');
-            // Check if branch exists on remote — we can still create PR from it
+        if (!stagedOutput || !stagedOutput.trim()) {
+            console.warn('No new staged changes in testing/ (files may already exist on branch)');
+            // Ensure the branch is pushed to remote so we can create/find a PR
             var remoteBranchCheck = cleanCommandOutput(
                 cli_execute_command({ command: 'git ls-remote --heads origin ' + branchName }) || ''
             );
-            if (remoteBranchCheck.trim()) {
-                console.log('Branch exists on remote, will try to create PR from existing branch');
-                return { success: true, branchName: branchName, noNewCommit: true };
+            if (!remoteBranchCheck.trim()) {
+                console.log('No remote branch found, pushing current branch state...');
+                try {
+                    cli_execute_command({ command: 'git push -u origin ' + branchName + ' --force' });
+                } catch (pushErr) {
+                    console.warn('Failed to push branch:', pushErr);
+                    return { success: false, error: 'No test files were written and could not push branch' };
+                }
+            } else {
+                console.log('Branch exists on remote — test files unchanged, will create/find PR from existing branch');
             }
-            // No remote branch either — push current branch so PR can be created
-            console.log('No remote branch found, pushing current branch state...');
-            try {
-                cli_execute_command({ command: 'git push -u origin ' + branchName + ' --force' });
-                return { success: true, branchName: branchName, noNewCommit: true };
-            } catch (pushErr) {
-                console.warn('Failed to push branch:', pushErr);
-                return { success: false, error: 'No test files were written and could not push branch' };
-            }
+            // Return with branch name; main flow will create/find the PR and go to In Review - Passed/Failed
+            return { success: true, branchName: branchName };
         }
 
         console.log('Committing...');

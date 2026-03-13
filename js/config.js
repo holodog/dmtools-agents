@@ -31,7 +31,8 @@ const STATUSES = {
     IN_REVIEW_PASSED: 'In Review - Passed',          // Test ran and passed, awaiting code review
     IN_REVIEW_FAILED: 'In Review - Failed',          // Test ran and failed, awaiting code review
     IN_TESTING: 'In Testing',                        // Test cases generated, automation in progress
-    BUG_TO_FIX: 'Bug To Fix'                         // Bug linked/created for this TC, waiting for fix
+    BUG_TO_FIX: 'Bug To Fix',                        // Bug linked/created for this TC, waiting for fix
+    BACKLOG: 'Backlog'                               // Ticket waiting to be picked up
 };
 
 // Jira Priorities
