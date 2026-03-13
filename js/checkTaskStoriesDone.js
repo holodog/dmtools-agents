@@ -32,36 +32,36 @@ function action(params) {
         if (!ticketKey) throw new Error('params.ticket.key is missing');
         console.log('=== Task done check for', ticketKey, '===');
 
-        // Step 1: Count all linked Stories
-        const allStories = jira_search_by_jql({
-            jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype in (Story)',
+        // Step 1: Count all linked Stories and Bugs
+        const allItems = jira_search_by_jql({
+            jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype in (Story, Bug)',
             maxResults: 100
         }) || [];
-        const totalStories = allStories.length;
-        console.log('Linked Stories:', totalStories);
+        const totalItems = allItems.length;
+        console.log('Linked Stories + Bugs:', totalItems);
 
-        if (totalStories === 0) {
-            console.log('No linked Stories found — releasing lock, will re-check next cycle');
+        if (totalItems === 0) {
+            console.log('No linked Stories or Bugs found — releasing lock, will re-check next cycle');
             releaseLock();
             return { success: true, action: 'no_stories', ticketKey };
         }
 
-        // Step 2: Find linked Stories NOT yet Done
-        const notDoneStories = jira_search_by_jql({
-            jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype in (Story) AND status != "Done"',
+        // Step 2: Find linked Stories/Bugs NOT yet Done
+        const notDoneItems = jira_search_by_jql({
+            jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype in (Story, Bug) AND status != "Done"',
             maxResults: 1
         }) || [];
-        const notDoneCount = notDoneStories.length;
-        console.log('Stories not yet Done:', notDoneCount, '/', totalStories);
+        const notDoneCount = notDoneItems.length;
+        console.log('Stories/Bugs not yet Done:', notDoneCount, '/', totalItems);
 
         if (notDoneCount > 0) {
-            console.log('Not all Stories done — releasing lock, will re-check next cycle');
+            console.log('Not all Stories/Bugs done — releasing lock, will re-check next cycle');
             releaseLock();
-            return { success: true, action: 'waiting', total: totalStories, notDone: notDoneCount, ticketKey };
+            return { success: true, action: 'waiting', total: totalItems, notDone: notDoneCount, ticketKey };
         }
 
-        // Step 3: All Stories Done → move Task to Ready For Testing
-        console.log('All', totalStories, 'Story/Stories done — moving', ticketKey, 'to Ready For Testing');
+        // Step 3: All Stories/Bugs Done → move Task to Ready For Testing
+        console.log('All', totalItems, 'Story/Bug(s) done — moving', ticketKey, 'to Ready For Testing');
 
         jira_move_to_status({
             key: ticketKey,
@@ -70,13 +70,13 @@ function action(params) {
 
         jira_post_comment({
             key: ticketKey,
-            comment: 'h3. ✅ Task Complete — All Stories Done\n\n' +
-                'All *' + totalStories + '* child Story/Stories are in *Done* status.\n\n' +
+            comment: 'h3. ✅ Task Complete — All Stories & Bugs Done\n\n' +
+                'All *' + totalItems + '* linked Story/Bug(s) are in *Done* status.\n\n' +
                 'The task has been automatically moved to *Ready For Testing*.'
         });
 
         console.log('✅ Task', ticketKey, 'moved to Ready For Testing');
-        return { success: true, action: 'moved_to_ready_for_testing', total: totalStories, ticketKey };
+        return { success: true, action: 'moved_to_ready_for_testing', total: totalItems, ticketKey };
 
     } catch (error) {
         console.error('❌ Error in checkTaskStoriesDone:', error);
