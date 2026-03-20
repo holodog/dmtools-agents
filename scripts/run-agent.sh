@@ -145,12 +145,15 @@ elif [ "$PROVIDER" = "claude" ]; then
     exit 127
   fi
 
+  # Use DEFAULT_LLM environment variable if set, otherwise default to kimi-k2.5
+  MODEL="${DEFAULT_LLM:-kimi-k2.5}"
   echo "Claude Configuration:"
+  echo "  Model: $MODEL"
 
   if [ ${#PASS_ARGS[@]} -eq 0 ]; then
-    CMD=(claude --model kimi-k2.5 -p "$PROMPT")
+    CMD=(claude --model "$MODEL" -p "$PROMPT")
   else
-    CMD=(claude --model kimi-k2.5 "${PASS_ARGS[@]}" -p "$PROMPT")
+    CMD=(claude --model "$MODEL" "${PASS_ARGS[@]}" -p "$PROMPT")
   fi
 
 else
