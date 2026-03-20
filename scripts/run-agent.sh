@@ -148,9 +148,9 @@ elif [ "$PROVIDER" = "claude" ]; then
   echo "Claude Configuration:"
 
   if [ ${#PASS_ARGS[@]} -eq 0 ]; then
-    CMD=(claude -p "$PROMPT")
+    CMD=(claude --model kimi-k2.5 -p "$PROMPT")
   else
-    CMD=(claude "${PASS_ARGS[@]}" -p "$PROMPT")
+    CMD=(claude --model kimi-k2.5 "${PASS_ARGS[@]}" -p "$PROMPT")
   fi
 
 else
