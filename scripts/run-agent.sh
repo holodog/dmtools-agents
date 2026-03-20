@@ -138,6 +138,20 @@ elif [ "$PROVIDER" = "copilot" ]; then
 
   CMD=(npx @github/copilot --allow-all-tools --model "${COPILOT_MODEL:-gpt-5-mini}" -p "$PROMPT")
 
+elif [ "$PROVIDER" = "claude" ]; then
+  if ! command -v claude >/dev/null 2>&1; then
+    echo "Error: claude not found in PATH" >&2
+    exit 127
+  fi
+
+  echo "Claude Configuration:"
+
+  if [ ${#PASS_ARGS[@]} -eq 0 ]; then
+    CMD=(claude -p "$PROMPT")
+  else
+    CMD=(claude "${PASS_ARGS[@]}" -p "$PROMPT")
+  fi
+
 else
   # Default to cursor
   if ! command -v cursor-agent >/dev/null 2>&1; then
