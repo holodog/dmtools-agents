@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+export PATH="$HOME/.local/bin:$PATH"
 
 usage() {
   cat <<EOF
