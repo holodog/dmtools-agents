@@ -149,11 +149,15 @@ elif [ "$PROVIDER" = "claude" ]; then
   MODEL="${DEFAULT_LLM:-kimi-k2.5}"
   echo "Claude Configuration:"
   echo "  Model: $MODEL"
-
+  
+  # Write prompt to temp file to avoid bash interpreting special characters (backticks, etc.)
+  PROMPT_FILE=$(mktemp)
+  echo "$PROMPT" > "$PROMPT_FILE"
+  
   if [ ${#PASS_ARGS[@]} -eq 0 ]; then
-    CMD=(claude --model "$MODEL" -p "$PROMPT")
+    CMD=(claude --model "$MODEL" -p "$PROMPT_FILE")
   else
-    CMD=(claude --model "$MODEL" "${PASS_ARGS[@]}" -p "$PROMPT")
+    CMD=(claude --model "$MODEL" "${PASS_ARGS[@]}" -p "$PROMPT_FILE")
   fi
 
 else
@@ -181,6 +185,11 @@ echo ""
 "${CMD[@]}"
 
 exit_code=$?
+
+# Cleanup temp file if created
+if [ -n "${PROMPT_FILE:-}" ] && [ -f "$PROMPT_FILE" ]; then
+  rm -f "$PROMPT_FILE"
+fi
 
 echo ""
 echo "=== Agent completed with exit code: $exit_code ==="
