@@ -13,6 +13,8 @@ Providers:
   cursor   - Uses cursor-agent (default)
   codemie  - Uses codemie-claude
   copilot  - Uses GitHub Copilot CLI (npx @github/copilot)
+  cline    - Uses cline CLI
+  claude   - Uses claude CLI
 
 Example:
   $(basename "$0") "process the input folder"
@@ -138,6 +140,17 @@ elif [ "$PROVIDER" = "copilot" ]; then
   echo "  Model: ${COPILOT_MODEL:-gpt-5-mini}"
 
   CMD=(npx @github/copilot --allow-all-tools --model "${COPILOT_MODEL:-gpt-5-mini}" -p "$PROMPT")
+
+elif [ "$PROVIDER" = "cline" ]; then
+  if ! command -v cline >/dev/null 2>&1; then
+    echo "Error: cline not found in PATH" >&2
+    exit 127
+  fi
+
+  echo "Cline Configuration:"
+  echo "  Model: default"
+
+  CMD=(cline -y "$PROMPT")
 
 elif [ "$PROVIDER" = "claude" ]; then
   if ! command -v claude >/dev/null 2>&1; then
