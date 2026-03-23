@@ -1,6 +1,13 @@
 #!/bin/bash
 set -euo pipefail
-export PATH="$HOME/.local/bin:$PATH"
+
+# Add standard binary paths that may be missing in CI/runner environments
+export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+
+# Source nvm if available (for node global binaries like cline, claude)
+if [ -s "$HOME/.nvm/nvm.sh" ]; then
+  . "$HOME/.nvm/nvm.sh"
+fi
 
 usage() {
   cat <<EOF
