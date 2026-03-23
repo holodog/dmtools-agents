@@ -272,7 +272,7 @@ function buildFinalComment(results, aiComment) {
         comment += '_No tickets were created (stories.json was empty)._\n';
     } else {
         successes.forEach(function(r) {
-            comment += '* [' + r.key + '|https://dmtools.atlassian.net/browse/' + r.key + '] (' + r.type + ') - ' + r.summary + '\n';
+            comment += '* [' + r.key + '|https://majesens.atlassian.net/browse/' + r.key + '] (' + r.type + ') - ' + r.summary + '\n';
         });
 
         if (failures.length > 0) {

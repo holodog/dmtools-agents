@@ -141,7 +141,7 @@ function postSummaryComment(parentKey, moduleAnalysis, createdTickets) {
         if (successfulTickets.length > 0) {
             comment += '*Created Solution Design Tickets:*\n';
             successfulTickets.forEach(function(ticket) {
-                comment += '* [' + ticket.key + '|https://dmtools.atlassian.net/browse/' + ticket.key + '] - ' + ticket.summary + '\n';
+                comment += '* [' + ticket.key + '|https://majesens.atlassian.net/browse/' + ticket.key + '] - ' + ticket.summary + '\n';
             });
             comment += '\n';
         }
