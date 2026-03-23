@@ -24,14 +24,26 @@
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function buildEncodedConfig(ticketKey) {
-    var p = { inputJql: 'key = ' + ticketKey };
+function buildEncodedConfig(ticketKey, initiatorId) {
+    var p = {
+        inputJql: 'key = ' + ticketKey
+    };
+    if (initiatorId) {
+        p.initiator = initiatorId;
+    }
     return encodeURIComponent(JSON.stringify({ params: p }));
 }
 
 function triggerWorkflow(repoInfo, ticketKey, rule) {
     var workflowFile = rule.workflowFile || 'ai-teammate.yml';
     var workflowRef  = rule.workflowRef  || 'main';
+
+    // Get initiator from environment variable (set in GitHub Actions)
+    var initiatorId = null;
+    try {
+        initiatorId = JIRA_INITIATOR_ACCOUNT_ID || null;
+    } catch (e) {}
+
     try {
         github_trigger_workflow(
             repoInfo.owner,
@@ -40,7 +52,7 @@ function triggerWorkflow(repoInfo, ticketKey, rule) {
             JSON.stringify({
                 concurrency_key: ticketKey,
                 config_file:     rule.configFile,
-                encoded_config:  buildEncodedConfig(ticketKey)
+                encoded_config:  buildEncodedConfig(ticketKey, initiatorId)
             }),
             workflowRef
         );
@@ -135,6 +147,14 @@ function processRuleLocally(rule, ruleIndex) {
     }
 
     var agentParams = agentConfig.params || {};
+
+    // Add initiator from environment variable for local execution
+    try {
+        if (JIRA_INITIATOR_ACCOUNT_ID) {
+            agentParams.initiator = JIRA_INITIATOR_ACCOUNT_ID;
+        }
+    } catch (e) {}
+
     var postJSActionPath = agentParams.postJSAction;
 
     if (!postJSActionPath) {
