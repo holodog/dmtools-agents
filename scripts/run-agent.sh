@@ -175,9 +175,9 @@ elif [ "$PROVIDER" = "claude" ]; then
   echo "$PROMPT" > "$PROMPT_FILE"
   
   if [ ${#PASS_ARGS[@]} -eq 0 ]; then
-    CMD=(claude --bare --model "$MODEL" --max-turns 10 --dangerously-skip-permissions -p "$PROMPT_FILE")
+    CMD=(claude --bare --model "$MODEL" --max-turns 40 --dangerously-skip-permissions -p "$PROMPT_FILE")
   else
-    CMD=(claude --bare --model "$MODEL" "${PASS_ARGS[@]}" --max-turns 10 --dangerously-skip-permissions -p "$PROMPT_FILE")
+    CMD=(claude --bare --model "$MODEL" "${PASS_ARGS[@]}" --max-turns 40 --dangerously-skip-permissions -p "$PROMPT_FILE")
   fi
 
 else
