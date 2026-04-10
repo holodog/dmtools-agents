@@ -17,7 +17,7 @@
         "./agents/instructions/common/bash_tools.md"
       ],
       "knownInfo": "",
-      "formattingRules": "https://majesens.atlassian.net/wiki/spaces/majesens/pages/1736705/Template+Jira+Markdown",
+      "formattingRules": "",
       "fewShots": ""
     },
     "cliPrompt": "./agents/prompts/po_refinement_prompt.md",
