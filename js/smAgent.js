@@ -31,6 +31,10 @@ function buildEncodedConfig(ticketKey, initiatorId) {
     if (initiatorId) {
         p.initiator = initiatorId;
     }
+    // Pass base branch for JavaScript scripts to use (avoids GraalVM env var issues)
+    if (typeof DEFAULT_BASE_BRANCH !== 'undefined') {
+        p.base_branch = DEFAULT_BASE_BRANCH;
+    }
     return encodeURIComponent(JSON.stringify({ params: p }));
 }
 

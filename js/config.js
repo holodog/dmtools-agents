@@ -68,29 +68,26 @@ var GIT_CONFIG = {
     DEFAULT_ISSUE_TYPE_PREFIX: 'feature'
 };
 
-// Get DEFAULT_BASE_BRANCH from environment (GraalVM compatible)
+// Get DEFAULT_BASE_BRANCH from environment or global (GraalVM compatible)
 (function() {
     var envBranch = null;
 
-    try {
-        // Try GraalVM Java interop
-        var System = Java.type('java.lang.System');
+    // Method 1: Check for global variable set by workflow (most reliable)
+    if (typeof DEFAULT_BASE_BRANCH !== 'undefined' && DEFAULT_BASE_BRANCH) {
+        envBranch = DEFAULT_BASE_BRANCH;
+    }
 
-        // Check if getenv() works by getting all env vars
-        var allEnv = System.getenv();
-        if (allEnv != null && !allEnv.isEmpty()) {
-            // getenv works, get our specific variable
-            envBranch = System.getenv('DEFAULT_BASE_BRANCH');
-            // Log for debugging (will appear in workflow logs)
-            if (envBranch == null) {
-                // Variable not found, but getenv works - log available keys for debugging
-                // console.log('DEFAULT_BASE_BRANCH not found in env. Available keys: ' + allEnv.keySet().toArray().slice(0, 10).join(', '));
+    // Method 2: Try GraalVM Java interop for environment variable
+    if (envBranch == null) {
+        try {
+            var System = Java.type('java.lang.System');
+            var allEnv = System.getenv();
+            if (allEnv != null && !allEnv.isEmpty()) {
+                envBranch = System.getenv('DEFAULT_BASE_BRANCH');
             }
-        } else {
-            console.log('System.getenv() returned empty/null - Java interop may be restricted');
+        } catch (e) {
+            // Java interop not available
         }
-    } catch (e) {
-        console.log('Java.type failed: ' + e);
     }
 
     GIT_CONFIG.DEFAULT_BASE_BRANCH = (envBranch != null) ? envBranch : 'main';
