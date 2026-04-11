@@ -62,12 +62,23 @@ const LABELS = {
 };
 
 // Git Configuration
-const GIT_CONFIG = {
+var GIT_CONFIG = {
     AUTHOR_NAME: 'AI Teammate',
     AUTHOR_EMAIL: 'agent.ai.native@gmail.com',
-    DEFAULT_BASE_BRANCH: process.env.DEFAULT_BASE_BRANCH || 'main',
+    DEFAULT_BASE_BRANCH: 'main',
     DEFAULT_ISSUE_TYPE_PREFIX: 'feature'
 };
+
+// Override DEFAULT_BASE_BRANCH from environment if available (GraalVM)
+try {
+    var System = Java.type('java.lang.System');
+    var envBranch = System.getenv('DEFAULT_BASE_BRANCH');
+    if (envBranch != null) {
+        GIT_CONFIG.DEFAULT_BASE_BRANCH = envBranch;
+    }
+} catch (e) {
+    // Ignore if Java interop not available
+}
 
 // Solution Design Module Prefixes
 const MODULE_PREFIXES = {
