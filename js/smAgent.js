@@ -20,11 +20,39 @@
  *   enabled        (optional) — set to false to disable the rule entirely (default: true)
  *   limit          (optional) — max number of tickets to process per run (default: 50)
  *   localExecution (optional) — if true, run postJSAction directly (no runner, no AI/CLI)
+ *   targetRepo     (optional) — 'backend', 'frontend', or 'root' (default: 'root')
  */
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function buildEncodedConfig(ticketKey, initiatorId) {
+/**
+ * Determine target repository based on ticket labels
+ * @param {Object} ticket - Jira ticket object
+ * @param {string} defaultTarget - Default repo if no label found ('root', 'backend', 'frontend')
+ * @returns {Object} { owner: 'holodog', repo: 'ms_root'|'ms_back'|'ms_front', ref: 'master'|'main' }
+ */
+function getTargetRepo(ticket, defaultTarget) {
+    var labels = (ticket.fields && ticket.fields.labels) ? ticket.fields.labels : [];
+    var target = defaultTarget || 'root';
+
+    // Check for repo-specific labels
+    if (labels.indexOf('frontend') !== -1 || labels.indexOf('ui') !== -1 || labels.indexOf('react') !== -1) {
+        target = 'frontend';
+    } else if (labels.indexOf('backend') !== -1 || labels.indexOf('api') !== -1 || labels.indexOf('go') !== -1) {
+        target = 'backend';
+    }
+
+    // Map target to actual repo info
+    if (target === 'frontend') {
+        return { owner: 'holodog', repo: 'ms_front', ref: 'main' };
+    } else if (target === 'backend') {
+        return { owner: 'holodog', repo: 'ms_back', ref: 'main' };
+    }
+    // Default to root
+    return { owner: 'holodog', repo: 'ms_root', ref: 'master' };
+}
+
+function buildEncodedConfig(ticketKey, initiatorId, baseBranch) {
     var p = {
         inputJql: 'key = ' + ticketKey
     };
@@ -32,7 +60,9 @@ function buildEncodedConfig(ticketKey, initiatorId) {
         p.initiator = initiatorId;
     }
     // Pass base branch for JavaScript scripts to use (avoids GraalVM env var issues)
-    if (typeof DEFAULT_BASE_BRANCH !== 'undefined') {
+    if (baseBranch) {
+        p.base_branch = baseBranch;
+    } else if (typeof DEFAULT_BASE_BRANCH !== 'undefined') {
         p.base_branch = DEFAULT_BASE_BRANCH;
     }
     return encodeURIComponent(JSON.stringify({ params: p }));
@@ -40,7 +70,8 @@ function buildEncodedConfig(ticketKey, initiatorId) {
 
 function triggerWorkflow(repoInfo, ticketKey, rule) {
     var workflowFile = rule.workflowFile || 'ai-teammate.yml';
-    var workflowRef  = rule.workflowRef  || 'main';
+    // Use repo-specific ref if provided, otherwise use rule's workflowRef or default
+    var workflowRef = rule.workflowRef || repoInfo.ref || 'main';
 
     // Get initiator from environment variable (set in GitHub Actions)
     var initiatorId = null;
@@ -288,7 +319,11 @@ function processRule(rule, repoInfo, ruleIndex) {
             moveStatus(key, rule.targetStatus);
         }
 
-        var triggered = triggerWorkflow(repoInfo, key, rule);
+        // Determine target repo based on ticket labels (supports multi-repo routing)
+        var targetRepo = getTargetRepo(ticket, rule.targetRepo || 'root');
+        console.log('  📍 ' + key + ' → ' + targetRepo.owner + '/' + targetRepo.repo + '@' + targetRepo.ref);
+
+        var triggered = triggerWorkflow(targetRepo, key, rule);
 
         if (triggered && rule.addLabel) {
             try { jira_add_label({ key: key, label: rule.addLabel }); } catch (e) {}
