@@ -61,30 +61,38 @@ const LABELS = {
     PR_APPROVED: 'pr_approved'              // Added to PR and ticket when AI approves, removed after merge attempt
 };
 
-// Git Configuration - with lazy getter for DEFAULT_BASE_BRANCH to support GraalVM
+// Git Configuration
 var GIT_CONFIG = {
     AUTHOR_NAME: 'AI Teammate',
     AUTHOR_EMAIL: 'agent.ai.native@gmail.com',
     DEFAULT_ISSUE_TYPE_PREFIX: 'feature'
 };
 
-// Getter for DEFAULT_BASE_BRANCH - reads from environment at access time (GraalVM compatible)
-Object.defineProperty(GIT_CONFIG, 'DEFAULT_BASE_BRANCH', {
-    get: function() {
+// Get DEFAULT_BASE_BRANCH from environment (GraalVM compatible)
+(function() {
+    try {
+        // Try Java.type first (GraalVM)
+        var System = Java.type('java.lang.System');
+        var envBranch = System.getenv('DEFAULT_BASE_BRANCH');
+        if (envBranch != null) {
+            GIT_CONFIG.DEFAULT_BASE_BRANCH = envBranch;
+            return;
+        }
+    } catch (e1) {
         try {
-            var System = Java.type('java.lang.System');
-            var envBranch = System.getenv('DEFAULT_BASE_BRANCH');
+            // Fallback to Packages (Rhino/GraalVM alternative)
+            var envBranch = Packages.java.lang.System.getenv('DEFAULT_BASE_BRANCH');
             if (envBranch != null) {
-                return envBranch;
+                GIT_CONFIG.DEFAULT_BASE_BRANCH = envBranch;
+                return;
             }
-        } catch (e) {
+        } catch (e2) {
             // Ignore if Java interop not available
         }
-        return 'main';
-    },
-    enumerable: true,
-    configurable: true
-});
+    }
+    // Default fallback
+    GIT_CONFIG.DEFAULT_BASE_BRANCH = 'main';
+})();
 
 // Solution Design Module Prefixes
 const MODULE_PREFIXES = {
