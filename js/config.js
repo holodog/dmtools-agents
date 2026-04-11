@@ -70,28 +70,29 @@ var GIT_CONFIG = {
 
 // Get DEFAULT_BASE_BRANCH from environment (GraalVM compatible)
 (function() {
+    var envBranch = null;
+
+    // Method 1: Java.type (GraalVM preferred)
     try {
-        // Try Java.type first (GraalVM)
-        var System = Java.type('java.lang.System');
-        var envBranch = System.getenv('DEFAULT_BASE_BRANCH');
-        if (envBranch != null) {
-            GIT_CONFIG.DEFAULT_BASE_BRANCH = envBranch;
-            return;
+        if (typeof Java !== 'undefined') {
+            var System = Java.type('java.lang.System');
+            envBranch = System.getenv('DEFAULT_BASE_BRANCH');
         }
     } catch (e1) {
+        // Method 2: Packages (Rhino/GraalVM alternative)
         try {
-            // Fallback to Packages (Rhino/GraalVM alternative)
-            var envBranch = Packages.java.lang.System.getenv('DEFAULT_BASE_BRANCH');
-            if (envBranch != null) {
-                GIT_CONFIG.DEFAULT_BASE_BRANCH = envBranch;
-                return;
-            }
+            envBranch = Packages.java.lang.System.getenv('DEFAULT_BASE_BRANCH');
         } catch (e2) {
-            // Ignore if Java interop not available
+            // Method 3: Direct java global
+            try {
+                envBranch = java.lang.System.getenv('DEFAULT_BASE_BRANCH');
+            } catch (e3) {
+                // All methods failed
+            }
         }
     }
-    // Default fallback
-    GIT_CONFIG.DEFAULT_BASE_BRANCH = 'main';
+
+    GIT_CONFIG.DEFAULT_BASE_BRANCH = (envBranch != null) ? envBranch : 'main';
 })();
 
 // Solution Design Module Prefixes
