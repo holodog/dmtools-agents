@@ -61,24 +61,30 @@ const LABELS = {
     PR_APPROVED: 'pr_approved'              // Added to PR and ticket when AI approves, removed after merge attempt
 };
 
-// Git Configuration
+// Git Configuration - with lazy getter for DEFAULT_BASE_BRANCH to support GraalVM
 var GIT_CONFIG = {
     AUTHOR_NAME: 'AI Teammate',
     AUTHOR_EMAIL: 'agent.ai.native@gmail.com',
-    DEFAULT_BASE_BRANCH: 'main',
     DEFAULT_ISSUE_TYPE_PREFIX: 'feature'
 };
 
-// Override DEFAULT_BASE_BRANCH from environment if available (GraalVM)
-try {
-    var System = Java.type('java.lang.System');
-    var envBranch = System.getenv('DEFAULT_BASE_BRANCH');
-    if (envBranch != null) {
-        GIT_CONFIG.DEFAULT_BASE_BRANCH = envBranch;
-    }
-} catch (e) {
-    // Ignore if Java interop not available
-}
+// Getter for DEFAULT_BASE_BRANCH - reads from environment at access time (GraalVM compatible)
+Object.defineProperty(GIT_CONFIG, 'DEFAULT_BASE_BRANCH', {
+    get: function() {
+        try {
+            var System = Java.type('java.lang.System');
+            var envBranch = System.getenv('DEFAULT_BASE_BRANCH');
+            if (envBranch != null) {
+                return envBranch;
+            }
+        } catch (e) {
+            // Ignore if Java interop not available
+        }
+        return 'main';
+    },
+    enumerable: true,
+    configurable: true
+});
 
 // Solution Design Module Prefixes
 const MODULE_PREFIXES = {
