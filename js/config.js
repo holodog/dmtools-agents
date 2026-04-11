@@ -72,24 +72,25 @@ var GIT_CONFIG = {
 (function() {
     var envBranch = null;
 
-    // Method 1: Java.type (GraalVM preferred)
     try {
-        if (typeof Java !== 'undefined') {
-            var System = Java.type('java.lang.System');
+        // Try GraalVM Java interop
+        var System = Java.type('java.lang.System');
+
+        // Check if getenv() works by getting all env vars
+        var allEnv = System.getenv();
+        if (allEnv != null && !allEnv.isEmpty()) {
+            // getenv works, get our specific variable
             envBranch = System.getenv('DEFAULT_BASE_BRANCH');
-        }
-    } catch (e1) {
-        // Method 2: Packages (Rhino/GraalVM alternative)
-        try {
-            envBranch = Packages.java.lang.System.getenv('DEFAULT_BASE_BRANCH');
-        } catch (e2) {
-            // Method 3: Direct java global
-            try {
-                envBranch = java.lang.System.getenv('DEFAULT_BASE_BRANCH');
-            } catch (e3) {
-                // All methods failed
+            // Log for debugging (will appear in workflow logs)
+            if (envBranch == null) {
+                // Variable not found, but getenv works - log available keys for debugging
+                // console.log('DEFAULT_BASE_BRANCH not found in env. Available keys: ' + allEnv.keySet().toArray().slice(0, 10).join(', '));
             }
+        } else {
+            console.log('System.getenv() returned empty/null - Java interop may be restricted');
         }
+    } catch (e) {
+        console.log('Java.type failed: ' + e);
     }
 
     GIT_CONFIG.DEFAULT_BASE_BRANCH = (envBranch != null) ? envBranch : 'main';
