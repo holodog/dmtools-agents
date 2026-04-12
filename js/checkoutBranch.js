@@ -42,6 +42,15 @@ function action(params) {
             console.warn('Failed to configure git author:', e);
         }
 
+        // Clean any uncommitted changes (dmtools cache files, etc.)
+        try {
+            cli_execute_command({ command: 'git checkout -- .' });
+            cli_execute_command({ command: 'git clean -fd' });
+            console.log('Cleaned working directory');
+        } catch (e) {
+            console.warn('Could not clean working directory:', e);
+        }
+
         // Fetch latest remote state
         try {
             cli_execute_command({ command: 'git fetch origin --prune' });
