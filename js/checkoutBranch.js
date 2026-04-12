@@ -43,12 +43,13 @@ function action(params) {
         }
 
         // Clean any uncommitted changes (dmtools cache files, etc.)
-        // Only remove untracked files to avoid undoing the checkout step
+        // Must remove from git index AND working directory because files may be tracked
         try {
-            cli_execute_command({ command: 'git clean -fd' });
-            console.log('Cleaned untracked files');
+            cli_execute_command({ command: 'git rm -r --cached cacheBasicJiraClient/ 2>/dev/null || true' });
+            cli_execute_command({ command: 'rm -rf cacheBasicJiraClient/' });
+            console.log('Cleaned DMTools cache files');
         } catch (e) {
-            console.warn('Could not clean working directory:', e);
+            console.warn('Could not clean cache files:', e);
         }
 
         // Fetch latest remote state
