@@ -43,10 +43,10 @@ function action(params) {
         }
 
         // Clean any uncommitted changes (dmtools cache files, etc.)
+        // Only remove untracked files to avoid undoing the checkout step
         try {
-            cli_execute_command({ command: 'git checkout -- .' });
             cli_execute_command({ command: 'git clean -fd' });
-            console.log('Cleaned working directory');
+            console.log('Cleaned untracked files');
         } catch (e) {
             console.warn('Could not clean working directory:', e);
         }
@@ -58,6 +58,17 @@ function action(params) {
         } catch (e) {
             console.warn('Could not fetch remote branches:', e);
         }
+
+        // Double-check we're on the right branch by reading current branch
+        var currentBranch = '';
+        try {
+            var rawBranch = cli_execute_command({ command: 'git branch --show-current' }) || '';
+            currentBranch = cleanCommandOutput(rawBranch);
+        } catch (e) {
+            console.warn('Error checking current branch:', e);
+        }
+
+        console.log('Current branch before checkout logic:', currentBranch || '(unknown)');
 
         // Check if branch exists locally
         var localBranches = '';
@@ -95,7 +106,29 @@ function action(params) {
             }
         }
 
-        console.log('Branch ready:', branchName);
+        // Verify we're on the correct branch
+        var finalBranch = '';
+        try {
+            var rawFinalBranch = cli_execute_command({ command: 'git branch --show-current' }) || '';
+            finalBranch = cleanCommandOutput(rawFinalBranch);
+        } catch (e) {
+            console.warn('Error reading final branch:', e);
+        }
+
+        if (finalBranch !== branchName) {
+            console.warn('WARNING: Expected branch ' + branchName + ' but currently on ' + (finalBranch || 'unknown'));
+            // Force checkout to correct branch
+            console.log('Forcing checkout to', branchName);
+            try {
+                cli_execute_command({ command: 'git checkout ' + branchName });
+                finalBranch = branchName;
+                console.log('✅ Forced checkout succeeded');
+            } catch (forceErr) {
+                console.error('Failed to force checkout:', forceErr);
+            }
+        }
+
+        console.log('Branch ready:', finalBranch);
 
     } catch (error) {
         console.error('Error in checkoutBranch:', error);
