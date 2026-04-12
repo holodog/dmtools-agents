@@ -84,6 +84,19 @@ function action(params) {
             // Branch exists locally — check it out
             console.log('Branch exists locally, checking out:', branchName);
             cli_execute_command({ command: 'git checkout ' + branchName });
+            // Try to rebase, but skip if conflicts (non-fatal for AI development)
+            try {
+                var rebaseOutput = cleanCommandOutput(
+                    cli_execute_command({ command: 'git rebase origin/' + GIT_CONFIG.DEFAULT_BASE_BRANCH }) || ''
+                );
+                if (rebaseOutput.indexOf('CONFLICT') !== -1) {
+                    console.warn('Rebase has conflicts, continuing without rebase');
+                    try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
+                }
+            } catch (rebaseErr) {
+                console.warn('Rebase failed, continuing without rebase:', rebaseErr.message || rebaseErr);
+                try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
+            }
         } else {
             // Check if branch exists on remote
             var remoteBranches = '';
@@ -98,6 +111,19 @@ function action(params) {
                 // Exists on remote — checkout tracking remote
                 console.log('Branch exists on remote, checking out with tracking:', branchName);
                 cli_execute_command({ command: 'git checkout -b ' + branchName + ' origin/' + branchName });
+                // Try to rebase, but skip if conflicts (non-fatal for AI development)
+                try {
+                    var rebaseOutput2 = cleanCommandOutput(
+                        cli_execute_command({ command: 'git rebase origin/' + GIT_CONFIG.DEFAULT_BASE_BRANCH }) || ''
+                    );
+                    if (rebaseOutput2.indexOf('CONFLICT') !== -1) {
+                        console.warn('Rebase has conflicts, continuing without rebase');
+                        try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
+                    }
+                } catch (rebaseErr) {
+                    console.warn('Rebase failed, continuing without rebase:', rebaseErr.message || rebaseErr);
+                    try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
+                }
             } else {
                 // New branch — start from base branch
                 console.log('Creating new branch from', GIT_CONFIG.DEFAULT_BASE_BRANCH + ':', branchName);
