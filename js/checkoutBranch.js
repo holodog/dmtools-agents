@@ -47,6 +47,7 @@ function action(params) {
         try {
             cli_execute_command({ command: 'git rm -r --cached cacheBasicJiraClient/ 2>/dev/null || true' });
             cli_execute_command({ command: 'rm -rf cacheBasicJiraClient/' });
+            cli_execute_command({ command: 'git clean -fd' });
             console.log('Cleaned DMTools cache files');
         } catch (e) {
             console.warn('Could not clean cache files:', e);
@@ -60,18 +61,7 @@ function action(params) {
             console.warn('Could not fetch remote branches:', e);
         }
 
-        // Double-check we're on the right branch by reading current branch
-        var currentBranch = '';
-        try {
-            var rawBranch = cli_execute_command({ command: 'git branch --show-current' }) || '';
-            currentBranch = cleanCommandOutput(rawBranch);
-        } catch (e) {
-            console.warn('Error checking current branch:', e);
-        }
-
-        console.log('Current branch before checkout logic:', currentBranch || '(unknown)');
-
-        // Check if branch exists locally
+        // ALWAYS start fresh from base branch - delete local branch if exists
         var localBranches = '';
         try {
             var rawLocal = cli_execute_command({ command: 'git branch --list "' + branchName + '"' }) || '';
@@ -81,57 +71,35 @@ function action(params) {
         }
 
         if (localBranches.trim()) {
-            // Branch exists locally — check it out
-            console.log('Branch exists locally, checking out:', branchName);
-            cli_execute_command({ command: 'git checkout ' + branchName });
-            // Try to rebase, but skip if conflicts (non-fatal for AI development)
-            try {
-                var rebaseOutput = cleanCommandOutput(
-                    cli_execute_command({ command: 'git rebase origin/' + GIT_CONFIG.DEFAULT_BASE_BRANCH }) || ''
-                );
-                if (rebaseOutput.indexOf('CONFLICT') !== -1) {
-                    console.warn('Rebase has conflicts, continuing without rebase');
-                    try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
-                }
-            } catch (rebaseErr) {
-                console.warn('Rebase failed, continuing without rebase:', rebaseErr.message || rebaseErr);
-                try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
-            }
-        } else {
-            // Check if branch exists on remote
-            var remoteBranches = '';
-            try {
-                var rawRemote = cli_execute_command({ command: 'git ls-remote --heads origin ' + branchName }) || '';
-                remoteBranches = cleanCommandOutput(rawRemote);
-            } catch (e) {
-                console.warn('Error checking remote branches:', e);
-            }
+            console.log('Deleting existing local branch:', branchName);
+            cli_execute_command({ command: 'git branch -D ' + branchName });
+        }
 
-            if (remoteBranches.trim()) {
-                // Exists on remote — checkout tracking remote
-                console.log('Branch exists on remote, checking out with tracking:', branchName);
-                cli_execute_command({ command: 'git checkout -b ' + branchName + ' origin/' + branchName });
-                // Try to rebase, but skip if conflicts (non-fatal for AI development)
-                try {
-                    var rebaseOutput2 = cleanCommandOutput(
-                        cli_execute_command({ command: 'git rebase origin/' + GIT_CONFIG.DEFAULT_BASE_BRANCH }) || ''
-                    );
-                    if (rebaseOutput2.indexOf('CONFLICT') !== -1) {
-                        console.warn('Rebase has conflicts, continuing without rebase');
-                        try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
-                    }
-                } catch (rebaseErr) {
-                    console.warn('Rebase failed, continuing without rebase:', rebaseErr.message || rebaseErr);
-                    try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
-                }
-            } else {
-                // New branch — start from base branch
-                console.log('Creating new branch from', GIT_CONFIG.DEFAULT_BASE_BRANCH + ':', branchName);
-                cli_execute_command({ command: 'git checkout ' + GIT_CONFIG.DEFAULT_BASE_BRANCH });
-                cli_execute_command({ command: 'git pull origin ' + GIT_CONFIG.DEFAULT_BASE_BRANCH });
-                cli_execute_command({ command: 'git checkout -b ' + branchName });
+        // Check if branch exists on remote
+        var remoteBranches = '';
+        try {
+            var rawRemote = cli_execute_command({ command: 'git ls-remote --heads origin ' + branchName }) || '';
+            remoteBranches = cleanCommandOutput(rawRemote);
+        } catch (e) {
+            console.warn('Error checking remote branches:', e);
+        }
+
+        if (remoteBranches.trim()) {
+            // Branch exists on remote - delete and recreate from base to avoid conflicts
+            console.log('Branch exists on remote, deleting remote tracking branch and recreating from base:', branchName);
+            try {
+                cli_execute_command({ command: 'git push origin --delete ' + branchName + ' 2>/dev/null || true' });
+                console.log('Deleted remote branch');
+            } catch (e) {
+                console.warn('Could not delete remote branch:', e);
             }
         }
+
+        // Always create fresh branch from base
+        console.log('Creating fresh branch from', GIT_CONFIG.DEFAULT_BASE_BRANCH + ':', branchName);
+        cli_execute_command({ command: 'git checkout ' + GIT_CONFIG.DEFAULT_BASE_BRANCH });
+        cli_execute_command({ command: 'git pull origin ' + GIT_CONFIG.DEFAULT_BASE_BRANCH });
+        cli_execute_command({ command: 'git checkout -b ' + branchName });
 
         // Verify we're on the correct branch
         var finalBranch = '';
@@ -144,7 +112,6 @@ function action(params) {
 
         if (finalBranch !== branchName) {
             console.warn('WARNING: Expected branch ' + branchName + ' but currently on ' + (finalBranch || 'unknown'));
-            // Force checkout to correct branch
             console.log('Forcing checkout to', branchName);
             try {
                 cli_execute_command({ command: 'git checkout ' + branchName });

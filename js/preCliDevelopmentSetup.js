@@ -41,12 +41,14 @@ function checkoutBranch(ticketKey) {
         console.warn('Failed to configure git author:', e);
     }
 
+    // Fetch latest remote state
     try {
         cli_execute_command({ command: 'git fetch origin --prune' });
     } catch (e) {
         console.warn('Could not fetch remote branches:', e);
     }
 
+    // ALWAYS start fresh from base branch - delete local branch if exists
     var localBranches = '';
     try {
         var rawLocal = cli_execute_command({ command: 'git branch --list "' + branchName + '"' }) || '';
@@ -56,51 +58,35 @@ function checkoutBranch(ticketKey) {
     }
 
     if (localBranches.trim()) {
-        console.log('Branch exists locally, checking out:', branchName);
-        cli_execute_command({ command: 'git checkout ' + branchName });
-        // Try to rebase, but skip if conflicts (non-fatal for AI development)
-        try {
-            var rebaseOutput = cleanCommandOutput(
-                cli_execute_command({ command: 'git rebase origin/' + GIT_CONFIG.DEFAULT_BASE_BRANCH }) || ''
-            );
-            if (rebaseOutput.indexOf('CONFLICT') !== -1) {
-                console.warn('Rebase has conflicts, continuing without rebase');
-            }
-        } catch (rebaseErr) {
-            console.warn('Rebase failed, continuing without rebase:', rebaseErr.message || rebaseErr);
-            try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
-        }
-    } else {
-        var remoteBranches = '';
-        try {
-            var rawRemote = cli_execute_command({ command: 'git ls-remote --heads origin ' + branchName }) || '';
-            remoteBranches = cleanCommandOutput(rawRemote);
-        } catch (e) {
-            console.warn('Error checking remote branches:', e);
-        }
+        console.log('Deleting existing local branch:', branchName);
+        cli_execute_command({ command: 'git branch -D ' + branchName });
+    }
 
-        if (remoteBranches.trim()) {
-            console.log('Branch exists on remote, checking out:', branchName);
-            cli_execute_command({ command: 'git checkout -b ' + branchName + ' origin/' + branchName });
-            // Try to rebase, but skip if conflicts (non-fatal for AI development)
-            try {
-                var rebaseOutput2 = cleanCommandOutput(
-                    cli_execute_command({ command: 'git rebase origin/' + GIT_CONFIG.DEFAULT_BASE_BRANCH }) || ''
-                );
-                if (rebaseOutput2.indexOf('CONFLICT') !== -1) {
-                    console.warn('Rebase has conflicts, continuing without rebase');
-                }
-            } catch (rebaseErr) {
-                console.warn('Rebase failed, continuing without rebase:', rebaseErr.message || rebaseErr);
-                try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
-            }
-        } else {
-            console.log('Creating new branch from', GIT_CONFIG.DEFAULT_BASE_BRANCH + ':', branchName);
-            cli_execute_command({ command: 'git checkout ' + GIT_CONFIG.DEFAULT_BASE_BRANCH });
-            cli_execute_command({ command: 'git pull origin ' + GIT_CONFIG.DEFAULT_BASE_BRANCH });
-            cli_execute_command({ command: 'git checkout -b ' + branchName });
+    // Check if branch exists on remote
+    var remoteBranches = '';
+    try {
+        var rawRemote = cli_execute_command({ command: 'git ls-remote --heads origin ' + branchName }) || '';
+        remoteBranches = cleanCommandOutput(rawRemote);
+    } catch (e) {
+        console.warn('Error checking remote branches:', e);
+    }
+
+    if (remoteBranches.trim()) {
+        // Branch exists on remote - delete and recreate from base to avoid conflicts
+        console.log('Branch exists on remote, deleting remote tracking branch and recreating from base:', branchName);
+        try {
+            cli_execute_command({ command: 'git push origin --delete ' + branchName + ' 2>/dev/null || true' });
+            console.log('Deleted remote branch');
+        } catch (e) {
+            console.warn('Could not delete remote branch:', e);
         }
     }
+
+    // Always create fresh branch from base
+    console.log('Creating fresh branch from', GIT_CONFIG.DEFAULT_BASE_BRANCH + ':', branchName);
+    cli_execute_command({ command: 'git checkout ' + GIT_CONFIG.DEFAULT_BASE_BRANCH });
+    cli_execute_command({ command: 'git pull origin ' + GIT_CONFIG.DEFAULT_BASE_BRANCH });
+    cli_execute_command({ command: 'git checkout -b ' + branchName });
 
     console.log('Branch ready:', branchName);
 }
