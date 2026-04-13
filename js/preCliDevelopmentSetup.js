@@ -48,6 +48,18 @@ function checkoutBranch(ticketKey) {
         console.warn('Could not fetch remote branches:', e);
     }
 
+    // Clean any uncommitted changes (dmtools cache files, submodule modifications)
+    try {
+        cli_execute_command({ command: 'git rm -r --cached cacheBasicJiraClient/ 2>/dev/null || true' });
+        cli_execute_command({ command: 'rm -rf cacheBasicJiraClient/' });
+        // Clean inside agents submodule (dmtools may create cache there)
+        cli_execute_command({ command: 'cd agents && git clean -fdx && git checkout -- . && cd ..' });
+        cli_execute_command({ command: 'git clean -fd' });
+        console.log('Cleaned DMTools cache files and submodule');
+    } catch (e) {
+        console.warn('Could not clean cache files:', e);
+    }
+
     // ALWAYS start fresh from base branch - delete local branch if exists
     var localBranches = '';
     try {

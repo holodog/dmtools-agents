@@ -47,6 +47,8 @@ function action(params) {
         try {
             cli_execute_command({ command: 'git rm -r --cached cacheBasicJiraClient/ 2>/dev/null || true' });
             cli_execute_command({ command: 'rm -rf cacheBasicJiraClient/' });
+            // Also clean inside agents submodule (dmtools may create cache there)
+            cli_execute_command({ command: 'cd agents && git clean -fdx && git checkout -- . && cd ..' });
             cli_execute_command({ command: 'git clean -fd' });
             console.log('Cleaned DMTools cache files');
         } catch (e) {
