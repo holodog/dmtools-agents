@@ -12,6 +12,50 @@
 
 const { STATUSES, LABELS } = require('./config.js');
 
+/**
+ * Determine target repo based on ticket labels
+ * @param {Object} ticket - Jira ticket object
+ * @returns {string} Target repo name (ms_root, ms_back, or ms_front)
+ */
+function getTargetRepo(ticket) {
+    var labels = [];
+    if (ticket && ticket.fields && ticket.fields.labels) {
+        labels = ticket.fields.labels.map(function(l) { return l.toLowerCase(); });
+    }
+
+    // Frontend labels
+    if (labels.indexOf('frontend') !== -1 ||
+        labels.indexOf('ui') !== -1 ||
+        labels.indexOf('react') !== -1) {
+        return 'ms_front';
+    }
+
+    // Backend labels
+    if (labels.indexOf('backend') !== -1 ||
+        labels.indexOf('api') !== -1 ||
+        labels.indexOf('go') !== -1) {
+        return 'ms_back';
+    }
+
+    // Default to root repo
+    return 'ms_root';
+}
+
+/**
+ * Get GitHub owner/repo for a target repo name
+ * @param {string} targetRepo - Target repo name (ms_root, ms_back, ms_front)
+ * @returns {Object} Owner and repo, or null
+ */
+function getGitHubRepoForTarget(targetRepo) {
+    if (targetRepo === 'ms_front') {
+        return { owner: 'holodog', repo: 'ms_front' };
+    } else if (targetRepo === 'ms_back') {
+        return { owner: 'holodog', repo: 'ms_back' };
+    }
+    // Default to ms_root
+    return { owner: 'holodog', repo: 'ms_root' };
+}
+
 function getGitHubRepoInfo() {
     try {
         const rawOutput = cli_execute_command({ command: 'git config --get remote.origin.url' }) || '';
@@ -72,9 +116,14 @@ function action(params) {
         return false;
     }
 
-    const repoInfo = getGitHubRepoInfo();
+    // Determine target repo based on ticket labels
+    const targetRepo = getTargetRepo(params.ticket);
+    console.log('Target repo for ' + ticketKey + ': ' + targetRepo);
+
+    // Get GitHub owner/repo for target
+    const repoInfo = getGitHubRepoForTarget(targetRepo);
     if (!repoInfo) {
-        console.error('Could not determine owner/repo');
+        console.error('Could not determine owner/repo for ' + targetRepo);
         releaseLock(ticketKey, params);
         return false;
     }
