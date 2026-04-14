@@ -5,8 +5,8 @@
     "jobParams" : {
       "customParams" : {
         "workspace"   : "ai-teammate",
-        "repository"  : "mytube",
-        "jiraProject" : "MYTUBE"
+        "repository"  : "ms_root",
+        "jiraProject" : "MAJESENS"
       }
     }
   }

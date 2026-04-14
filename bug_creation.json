@@ -31,7 +31,7 @@
     "preCliJSAction": "agents/js/prepareBugCreationContext.js",
     "postJSAction": "agents/js/postBugCreation.js",
     "customParams": {
-      "openBugsJql": "project = MYTUBE AND issuetype in (Bug) AND status not in (Done)",
+      "openBugsJql": "project = MAJESENS AND issuetype in (Bug) AND status not in (Done)",
       "removeLabel": "sm_bug_creation_triggered"
     },
     "inputJql": "key = JD-111"

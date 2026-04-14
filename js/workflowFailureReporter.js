@@ -6,9 +6,9 @@
  *
  * customParams:
  *   workspace    — GitHub owner/org       (e.g. "ai-teammate")
- *   repository   — GitHub repo name       (e.g. "mytube")
+ *   repository   — GitHub repo name       (e.g. "ms_root")
  *   workflowId   — workflow filename      (optional, e.g. "ai-teammate.yml"; omit for all workflows)
- *   jiraProject  — Jira project key       (e.g. "MYTUBE")
+ *   jiraProject  — Jira project key       (e.g. "MAJESENS")
  *
  * NOTE: Listing runs without workflowId requires dmtools to support the /actions/runs endpoint.
  * If you get a 404 when workflowId is omitted, please report to dmtools:
