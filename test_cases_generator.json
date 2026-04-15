@@ -18,9 +18,9 @@
       "./agents/instructions/test_cases/test_case_creation_rules.md"
     ],
     "relatedTestCasesRules" : "./agents/instructions/test_cases/test_case_relation_rules.md",
-    "examples" : "ql(project = JD AND issuetype = 'Test Case' AND labels = \"ai_example\")",
+    "examples" : "ql(project = MAJESENS AND issuetype = 'Test Case' AND labels = \"ai_example\")",
     "preJSAction" : "agents/js/moveToReadyForTesting.js",
     "postJSAction" : "agents/js/moveToInTesting.js",
-    "inputJql" : "key = JD-107"
+    "inputJql" : "key = MAJESENS-15"
   }
 }
