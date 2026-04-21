@@ -42,17 +42,18 @@ function action(params) {
             console.warn('Failed to configure git author:', e);
         }
 
-        // Clean any uncommitted changes (dmtools cache files, etc.)
-        // Must remove from git index AND working directory because files may be tracked
+        // Clean ALL uncommitted changes including dmtools-generated input/ files
+        // The input/ folder is created by CliExecutionHelper before preCliJSAction runs
         try {
-            cli_execute_command({ command: 'git rm -r --cached cacheBasicJiraClient/ 2>/dev/null || true' });
-            cli_execute_command({ command: 'rm -rf cacheBasicJiraClient/' });
+            cli_execute_command({ command: 'git clean -fdx 2>/dev/null || true' });
+            cli_execute_command({ command: 'git checkout -- . 2>/dev/null || true' });
+            // Explicitly remove known dmtools artifacts that may be git-ignored
+            cli_execute_command({ command: 'rm -rf input/ cacheBasicJiraClient/ cacheBasicDialAI/ dmtools.env 2>/dev/null || true' });
             // Also clean inside agents submodule (dmtools may create cache there)
             cli_execute_command({ command: 'cd agents && git clean -fdx && git checkout -- . && cd ..' });
-            cli_execute_command({ command: 'git clean -fd' });
-            console.log('Cleaned DMTools cache files');
+            console.log('Cleaned all uncommitted changes and dmtools artifacts');
         } catch (e) {
-            console.warn('Could not clean cache files:', e);
+            console.warn('Could not clean workspace:', e);
         }
 
         // Fetch latest remote state
