@@ -49,12 +49,12 @@ function checkoutBranch(ticketKey) {
     }
 
     // Clean any uncommitted changes (dmtools cache files, submodule modifications)
+    // Order matters: reset tracked files FIRST, then clean untracked/ignored files
     try {
-        cli_execute_command({ command: 'git rm -r --cached cacheBasicJiraClient/ 2>/dev/null || true' });
-        cli_execute_command({ command: 'rm -rf cacheBasicJiraClient/' });
+        cli_execute_command({ command: 'git reset --hard HEAD 2>/dev/null || true' });
+        cli_execute_command({ command: 'git clean -fdx 2>/dev/null || true' });
         // Clean inside agents submodule (dmtools may create cache there)
-        cli_execute_command({ command: 'cd agents && git clean -fdx && git checkout -- . && cd ..' });
-        cli_execute_command({ command: 'git clean -fd' });
+        cli_execute_command({ command: 'cd agents && git reset --hard HEAD && git clean -fdx && cd ..' });
         console.log('Cleaned DMTools cache files and submodule');
     } catch (e) {
         console.warn('Could not clean cache files:', e);
