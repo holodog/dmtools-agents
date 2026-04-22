@@ -47,8 +47,7 @@ function action(params) {
         try {
             cli_execute_command({ command: 'git clean -fdx 2>/dev/null || true' });
             cli_execute_command({ command: 'git checkout -- . 2>/dev/null || true' });
-            // Explicitly remove known dmtools artifacts that may be git-ignored
-            cli_execute_command({ command: 'rm -rf input/ cacheBasicJiraClient/ cacheBasicDialAI/ dmtools.env 2>/dev/null || true' });
+            // git clean -fdx removes git-ignored files too (input/, caches, dmtools.env)
             // Also clean inside agents submodule (dmtools may create cache there)
             cli_execute_command({ command: 'cd agents && git clean -fdx && git checkout -- . && cd ..' });
             console.log('Cleaned all uncommitted changes and dmtools artifacts');

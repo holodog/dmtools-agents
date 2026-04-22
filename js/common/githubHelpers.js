@@ -94,8 +94,7 @@ function checkoutPRBranch(branchName) {
     try {
         cli_execute_command({ command: 'git clean -fdx 2>/dev/null || true' });
         cli_execute_command({ command: 'git checkout -- . 2>/dev/null || true' });
-        // Explicitly remove known dmtools artifacts that may be git-ignored
-        cli_execute_command({ command: 'rm -rf input/ cacheBasicJiraClient/ cacheBasicDialAI/ dmtools.env 2>/dev/null || true' });
+        // git clean -fdx removes git-ignored files too (input/, caches, dmtools.env)
         console.log('Cleaned all uncommitted changes before branch checkout');
     } catch (e) {
         console.warn('Could not clean workspace:', e);
