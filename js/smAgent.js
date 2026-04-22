@@ -42,6 +42,42 @@ function getTargetRepo(ticket, defaultTarget) {
         target = 'backend';
     }
 
+    // If no repo-specific labels found and this is a Test Case, try to inherit from linked story
+    // Test cases are generated from stories but may not inherit the frontend/backend labels
+    if (target === 'root') {
+        var issueType = (ticket.fields && ticket.fields.issuetype && ticket.fields.issuetype.name) || '';
+        if (issueType === 'Test Case') {
+            // Check issue links for related story/parent
+            if (ticket.fields && ticket.fields.issuelinks) {
+                for (var i = 0; i < ticket.fields.issuelinks.length; i++) {
+                    var link = ticket.fields.issuelinks[i];
+                    // Look for outward link (this test case links TO another issue)
+                    var linkedIssue = link.outwardIssue || link.inwardIssue;
+                    if (linkedIssue && linkedIssue.key) {
+                        // Check if linked issue is a Story (not another Test Case)
+                        var linkedType = (linkedIssue.fields && linkedIssue.fields.issuetype && linkedIssue.fields.issuetype.name) || '';
+                        if (linkedType === 'Story' || linkedType === 'Bug') {
+                            var linkedLabels = (linkedIssue.fields && linkedIssue.fields.labels) || [];
+
+                            // Check linked issue labels for repo indicators
+                            if (linkedLabels.indexOf('frontend') !== -1 ||
+                                linkedLabels.indexOf('ui') !== -1 ||
+                                linkedLabels.indexOf('react') !== -1) {
+                                target = 'frontend';
+                                break;
+                            } else if (linkedLabels.indexOf('backend') !== -1 ||
+                                       linkedLabels.indexOf('api') !== -1 ||
+                                       linkedLabels.indexOf('go') !== -1) {
+                                target = 'backend';
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Map target to actual repo info
     if (target === 'frontend') {
         return { owner: 'holodog', repo: 'ms_front', ref: 'main' };
@@ -199,7 +235,7 @@ function processRuleLocally(rule, ruleIndex) {
 
     var tickets = [];
     try {
-        tickets = jira_search_by_jql({ jql: rule.jql, fields: ['key', 'labels'] }) || [];
+        tickets = jira_search_by_jql({ jql: rule.jql, fields: ['key', 'labels', 'issuetype', 'issuelinks'] }) || [];
     } catch (e) {
         console.error('  ❌ Jira query failed: ' + (e.message || e));
         return { processedKeys: [], skippedKeys: [] };
@@ -284,7 +320,7 @@ function processRule(rule, repoInfo, ruleIndex) {
 
     var tickets = [];
     try {
-        tickets = jira_search_by_jql({ jql: rule.jql, fields: ['key', 'labels'] }) || [];
+        tickets = jira_search_by_jql({ jql: rule.jql, fields: ['key', 'labels', 'issuetype', 'issuelinks'] }) || [];
     } catch (e) {
         console.error('  ❌ Jira query failed: ' + (e.message || e));
         return { processedKeys: [], skippedKeys: [] };
