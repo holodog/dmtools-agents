@@ -89,6 +89,18 @@ function checkoutPRBranch(branchName) {
     cli_execute_command({ command: 'git config user.email "' + GIT_CONFIG.AUTHOR_EMAIL + '"' });
     cli_execute_command({ command: 'git fetch origin --prune' });
 
+    // Clean ALL uncommitted changes including dmtools-generated input/ files
+    // The input/ folder is created by CliExecutionHelper before preCliJSAction runs
+    try {
+        cli_execute_command({ command: 'git clean -fdx 2>/dev/null || true' });
+        cli_execute_command({ command: 'git checkout -- . 2>/dev/null || true' });
+        // Explicitly remove known dmtools artifacts that may be git-ignored
+        cli_execute_command({ command: 'rm -rf input/ cacheBasicJiraClient/ cacheBasicDialAI/ dmtools.env 2>/dev/null || true' });
+        console.log('Cleaned all uncommitted changes before branch checkout');
+    } catch (e) {
+        console.warn('Could not clean workspace:', e);
+    }
+
     const localBranch = cleanCommandOutput(
         cli_execute_command({ command: 'git branch --list "' + branchName + '"' }) || ''
     );
