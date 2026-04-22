@@ -57,19 +57,28 @@ function getTargetRepo(ticket, defaultTarget) {
                         // Check if linked issue is a Story (not another Test Case)
                         var linkedType = (linkedIssue.fields && linkedIssue.fields.issuetype && linkedIssue.fields.issuetype.name) || '';
                         if (linkedType === 'Story' || linkedType === 'Bug') {
-                            var linkedLabels = (linkedIssue.fields && linkedIssue.fields.labels) || [];
+                            // Fetch full parent ticket to get labels (search API returns truncated data)
+                            try {
+                                var parentTicket = jira_get_ticket(linkedIssue.key);
+                                if (typeof parentTicket === 'string') {
+                                    parentTicket = JSON.parse(parentTicket);
+                                }
+                                var parentLabels = (parentTicket.fields && parentTicket.fields.labels) || [];
 
-                            // Check linked issue labels for repo indicators
-                            if (linkedLabels.indexOf('frontend') !== -1 ||
-                                linkedLabels.indexOf('ui') !== -1 ||
-                                linkedLabels.indexOf('react') !== -1) {
-                                target = 'frontend';
-                                break;
-                            } else if (linkedLabels.indexOf('backend') !== -1 ||
-                                       linkedLabels.indexOf('api') !== -1 ||
-                                       linkedLabels.indexOf('go') !== -1) {
-                                target = 'backend';
-                                break;
+                                // Check parent labels for repo indicators
+                                if (parentLabels.indexOf('frontend') !== -1 ||
+                                    parentLabels.indexOf('ui') !== -1 ||
+                                    parentLabels.indexOf('react') !== -1) {
+                                    target = 'frontend';
+                                    break;
+                                } else if (parentLabels.indexOf('backend') !== -1 ||
+                                           parentLabels.indexOf('api') !== -1 ||
+                                           parentLabels.indexOf('go') !== -1) {
+                                    target = 'backend';
+                                    break;
+                                }
+                            } catch (e) {
+                                console.warn('  ⚠️  Could not fetch parent ticket ' + linkedIssue.key + ': ' + (e.message || e));
                             }
                         }
                     }
