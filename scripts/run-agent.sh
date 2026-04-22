@@ -165,10 +165,33 @@ elif [ "$PROVIDER" = "claude" ]; then
     exit 127
   fi
 
-  # Use DEFAULT_LLM environment variable if set, otherwise default to kimi-k2.5
-  MODEL="${DEFAULT_LLM:-kimi-k2.5}"
+  # AI_AGENT is the standardized provider selector (anthropic, dial, gemini, etc.)
+  # DEFAULT_LLM is kept for backward compatibility
+  RAW_MODEL="${AI_AGENT:-$DEFAULT_LLM}"
+
+  # Map provider names to actual model IDs using provider-specific *_MODEL variables
+  if [ "$RAW_MODEL" = "anthropic" ]; then
+    # Use ANTHROPIC_MODEL if set, otherwise default to claude-sonnet-4-20250514
+    MODEL="${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}"
+  elif [ "$RAW_MODEL" = "dial" ]; then
+    # Use DIAL_MODEL if set, otherwise default to gpt-4
+    MODEL="${DIAL_MODEL:-gpt-4}"
+  elif [ "$RAW_MODEL" = "gemini" ]; then
+    # Use GEMINI_MODEL if set, otherwise default to gemini-2.0-flash
+    MODEL="${GEMINI_MODEL:-gemini-2.0-flash}"
+  elif [ "$RAW_MODEL" = "openai" ]; then
+    # Use OPENAI_MODEL if set, otherwise default to gpt-4o
+    MODEL="${OPENAI_MODEL:-gpt-4o}"
+  elif [ -n "$RAW_MODEL" ]; then
+    # Use as-is (might already be a valid model ID like claude-opus-4-6)
+    MODEL="$RAW_MODEL"
+  else
+    # No provider specified, use default
+    MODEL="kimi-k2.5"
+  fi
+
   echo "Claude Configuration:"
-  echo "  Model: $MODEL"
+  echo "  Model: $MODEL (AI_AGENT: ${AI_AGENT:-$DEFAULT_LLM:-not set})"
   
   # Write prompt to temp file to avoid bash interpreting special characters (backticks, etc.)
   PROMPT_FILE=$(mktemp)
