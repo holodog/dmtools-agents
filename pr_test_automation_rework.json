@@ -32,6 +32,6 @@
     "customParams": {
       "removeLabel": "sm_test_rework_triggered"
     },
-    "inputJql": "project = JD AND issuetype = 'Test Case' AND status = 'In Rework'"
+    "inputJql": "project = MAJESENS AND issuetype = 'Test Case' AND status = 'In Rework'"
   }
 }

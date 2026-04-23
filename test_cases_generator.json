@@ -21,6 +21,6 @@
     "examples" : "ql(project = MAJESENS AND issuetype = 'Test Case' AND labels = \"ai_example\")",
     "preJSAction" : "agents/js/moveToReadyForTesting.js",
     "postJSAction" : "agents/js/moveToInTesting.js",
-    "inputJql" : "key = MAJESENS-15"
+    "inputJql" : "project = MAJESENS AND status = 'Merged' AND issuetype = 'Story'"
   }
 }
