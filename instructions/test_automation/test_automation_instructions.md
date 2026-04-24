@@ -15,7 +15,7 @@ The feature code is **already implemented and deployed** on the main branch. You
 | Test Type | Repository | Path |
 |-----------|------------|------|
 | Frontend UI tests (Playwright) | `ms_front` | `testing/tests/{TICKET-KEY}/` |
-| Backend API tests (Go) | `ms_back` | `testing/tests/{TICKET-KEY}/` |
+| Backend API tests (Go) | `ms_back` | `services/<service>/e2e/<feature>_e2e_test.go` (test code) + `testing/tests/{TICKET-KEY}/` (docs) |
 
 The ai-teammate workflow determines which repo to clone based on parent ticket labels (`frontend` or `backend`).
 
@@ -23,12 +23,16 @@ The ai-teammate workflow determines which repo to clone based on parent ticket l
 
 ## Scope Restriction
 
-You may **only** write code inside the `testing/` folder.
+You may **only** write code in these locations:
+
+- **Test documentation & config**: `testing/tests/{TICKET-KEY}/` (README.md, config.yaml)
+- **Frontend Playwright tests**: `testing/tests/{TICKET-KEY}/` and `testing/components/pages/` (TypeScript files)
+- **Backend Go e2e tests**: `services/<service-name>/e2e/<feature>_e2e_test.go` — alongside existing e2e tests (see `e2e/rbac_authorization_test.go` for the pattern)
 
 **Never modify:**
-- Feature source code outside `testing/`
+- Feature source code outside `testing/` and `services/*/e2e/`
 - CI/CD configuration files
-- Any file not under `testing/`
+- Any file not in the allowed locations above
 
 ---
 
@@ -36,16 +40,19 @@ You may **only** write code inside the `testing/` folder.
 
 Follow the architecture defined in `agents/instructions/test_automation/test_automation_architecture.md`.
 
-Tests go in: `testing/tests/{TICKET-KEY}/`
+Tests go in: `testing/tests/{TICKET-KEY}/` (docs) + `services/<service>/e2e/` (Go test code)
 
-Each test folder must contain:
+Each test ticket folder must contain:
 ```
 testing/tests/{TICKET-KEY}/
 ├── README.md              # how to run this specific test
-├── config.yaml            # framework, platform, dependencies
-└── test_{ticket_key}.ts   # TypeScript Playwright test (web)
-or
-└── test_{ticket_key}.go   # Go httptest test (API)
+└── config.yaml            # framework, platform, dependencies
+
+For Playwright (frontend):
+testing/tests/{TICKET-KEY}/test_{ticket_key}.ts   # Playwright test
+
+For Go httptest (backend):
+services/<service>/e2e/<feature>_e2e_test.go       # httptest-based e2e test
 ```
 
 The `README.md` inside the ticket folder is mandatory. It must include:
@@ -217,6 +224,19 @@ After writing the test:
 
 **Do not mark a test as passed without actually running it.**
 
+## CRITICAL VERIFICATION STEP
+
+Before writing output files, you MUST complete these verification steps:
+
+1. **Verify test file exists** — run: `test -f services/<service>/e2e/<test_file>.go` (for Go) or `test -f testing/tests/{TICKET}/test_{ticket}.ts` (for Playwright)
+2. **Verify test compiles** — for Go tests: run `go vet ./services/<service>/e2e/...` and check exit code is 0
+3. **Verify test was actually executed** — check the test runner output contains test names and pass/fail indicators, NOT just compilation output
+4. **If compilation fails** — fix the errors and retry. Do NOT proceed with a broken test.
+5. **NEVER claim "PASSED" without running** — if you cannot compile and execute the test, the status MUST be `"failed"` with the actual error message
+6. **Write `test_automation_result.json`** with the REAL status — `"status": "passed"` only if the test was compiled AND executed AND all assertions passed
+
+**Failure to verify means the post-processing script will post incorrect results to Jira and create a PR with non-functional code.**
+
 ---
 
 ## Output
@@ -263,33 +283,64 @@ test('User can login with valid credentials', async ({ page }) => {
 Use for: Testing backend microservices directly
 
 ```go
-package tests
+// Example: Real httptest-based e2e test for a Go handler
+package e2e
 
 import (
-    "net/http/httptest"
-    "testing"
-    "majesens/testing/core/models"
-    "majesens/testing/components/services"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"backend_two/services/user-management-service/internal/handlers"
+	"backend_two/services/user-management-service/internal/models"
+	"backend_two/services/user-management-service/internal/services"
 )
 
-func TestCreateAuction(t *testing.T) {
-    ts := httptest.NewServer(auctionService.Router())
-    defer ts.Close()
+// MockFollowRepository is a mock implementation for testing
+type MockFollowRepository struct { /* ... */ }
 
-    authService := services.NewAuthService(ts.URL)
-    auctionService := services.NewAuctionService(ts.URL)
-    
-    user := models.CreateTestUser()
-    token := authService.Login(user)
-    
-    auction := models.CreateTestAuction(user.ID)
-    response := auctionService.CreateAuction(token, auction)
-    
-    if response.StatusCode != http.StatusCreated {
-        t.Fatalf("Expected 201, got %d", response.StatusCode)
-    }
+// FollowUser test — success scenario
+func TestMAJESENS_241_FollowUserViaProfile(t *testing.T) {
+	// 1. Create mock repository
+	mockRepo := &MockFollowRepository{
+		CreateFollowFunc: func(followerID, followingID string) (*models.Follow, error) {
+			return &models.Follow{FollowerID: followerID, FollowingID: followingID, CreatedAt: time.Now()}, nil
+		},
+	}
+	// 2. Create service and handler
+	followService := services.NewFollowService(mockRepo)
+	handler := handlers.NewFollowHandler(followService)
+
+	// 3. Test follow request
+	req := httptest.NewRequest(http.MethodPost, "/api/user-management/users/target-uuid/follow", nil)
+	req.Header.Set("X-User-ID", "user-uuid")
+	w := httptest.NewRecorder()
+	handler.FollowUser(w, req)
+
+	// 4. Assert HTTP status
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Expected 201, got %d", w.Code)
+	}
+
+	// 5. Assert response body
+	var resp models.FollowResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	if !resp.IsFollowing {
+		t.Error("Expected isFollowing=true")
+	}
 }
 ```
+
+**CRITICAL rules for Go e2e tests:**
+1. **Write a REAL test** — the test function must contain actual assertions (e.g., `if w.Code != http.StatusCreated { t.Fatalf(...) }`)
+2. **Do NOT create empty wrapper files** that only import a non-existent package
+3. **Do NOT import packages that don't exist** — check that the handler/service/repository packages you import are real
+4. **Place the test file** at `services/<service-name>/e2e/<feature>_e2e_test.go`
+5. **Create the e2e subdirectory** if it doesn't exist yet: `mkdir -p services/<service-name>/e2e/`
+6. **Also write** `testing/tests/{TICKET-KEY}/README.md` and `config.yaml` documenting how to run the test
+7. **Never claim "PASSED" without actually running the test** — the test MUST be compiled and executed before writing a "passed" result
 
 ### Integration Tests (Playwright + API)
 

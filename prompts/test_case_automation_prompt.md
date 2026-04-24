@@ -17,11 +17,18 @@ The feature code is **already implemented** in the `main` branch and **deployed*
 1. Analyze the Test Case: understand what needs to be verified, what type it is (web, mobile, API), and which framework fits best.
 2. Check `testing/` for existing components (pages, screens, services) and core utilities you can reuse.
 3. **Check if test already exists** in `testing/tests/{TICKET-KEY}/`. If it does, reuse and update it rather than rewriting from scratch. Only modify what is necessary.
-4. Write the automated test in `testing/tests/{TICKET-KEY}/` following the architecture rules in `agents/instructions/test_automation/test_automation_architecture.md`.
-5. **Run the test** and capture the result.
-6. Write output files.
+4. **Write the actual test code** — a REAL test file with test functions and assertions, NOT just documentation:
+   - **Go backend (ms_back)**: write `services/<service>/e2e/<feature>_e2e_test.go` with a proper `func TestMAJESENS_XXX(t *testing.T)` containing httptest requests and assertions. See `agents/instructions/test_automation/test_automation_instructions.md` for the Go httptest template.
+   - **Playwright frontend (ms_front)**: write `testing/tests/{TICKET-KEY}/test_{ticket_key}.ts` with actual Playwright test cases.
+5. **Also write** `testing/tests/{TICKET-KEY}/README.md` and `config.yaml` documenting how to run the test.
+6. **Run the test** and capture the result.
+7. **Perform the CRITICAL VERIFICATION STEP** (see `test_automation_instructions.md` for details).
+8. Write output files.
 
-**You may ONLY write code inside the `testing/` folder.**
+You may write code in these locations:
+- **Test docs & config**: `testing/tests/{TICKET-KEY}/` (README.md, config.yaml)
+- **Frontend Playwright tests**: `testing/tests/{TICKET-KEY}/` and `testing/components/pages/`
+- **Backend Go e2e tests**: `services/<service>/e2e/<feature>_e2e_test.go`
 
 ## Output files
 
@@ -68,4 +75,4 @@ If the test fails, `outputs/bug_description.md` **must** contain enough detail f
 
 The same level of detail applies to `response.md` — the Jira comment must clearly state **which step failed and why**, not just "FAILED".
 
-Do NOT create branches or push. Do NOT modify any code outside `testing/`.
+Do NOT create branches or push. Do NOT modify any feature source code outside `testing/` and `services/*/e2e/`.

@@ -62,6 +62,18 @@ function performGitOperations(branchName, commitMessage) {
         console.log('Staging testing/ folder...');
         cli_execute_command({ command: 'git add testing/' });
 
+        // Also stage any Go e2e test files in services/ directories
+        try {
+            var e2eStaged = cli_execute_command({
+                command: 'git add services/*/e2e/*_test.go 2>/dev/null && echo "e2e tests staged"'
+            });
+            if (e2eStaged && e2eStaged.indexOf('e2e tests staged') !== -1) {
+                console.log('✅ Staged e2e test files from services/');
+            }
+        } catch (e) {
+            console.warn('No e2e test files to stage (non-fatal):', e);
+        }
+
         var rawStatus = cli_execute_command({ command: 'git status --porcelain' }) || '';
         console.log('Raw git status length:', rawStatus.length);
         var statusOutput = cleanCommandOutput(rawStatus);
@@ -182,6 +194,27 @@ function action(params) {
 
         console.log('=== Processing test automation results for', ticketKey, '===');
 
+        // Step 0: Verify test code was actually generated before trusting results
+        var testFilesFound = false;
+        try {
+            // Check for Go e2e test files
+            var goTestOutput = cli_execute_command({
+                command: 'find services/ -path "*/e2e/*_test.go" -newer testing/tests/' + ticketKey + ' 2>/dev/null | head -5'
+            }) || '';
+            // Also check testing/ folder for any test code files
+            var testingTestOutput = cli_execute_command({
+                command: 'find testing/tests/' + ticketKey + ' -name "*.go" -o -name "*.ts" 2>/dev/null | head -5'
+            }) || '';
+            var hasGoTests = goTestOutput && goTestOutput.trim().length > 0;
+            var hasTestingTests = testingTestOutput && testingTestOutput.trim().length > 0;
+            testFilesFound = hasGoTests || hasTestingTests;
+            if (testFilesFound) {
+                console.log('Test files found — Go:', hasGoTests, 'Testing:', hasTestingTests);
+            }
+        } catch (e) {
+            console.warn('Could not verify test files (non-fatal):', e);
+        }
+
         // Step 1: Read structured result
         const result = readResultJson();
         if (!result) {
@@ -190,6 +223,13 @@ function action(params) {
                 comment: 'h3. ⚠️ Test Automation Error\n\nCould not read test result. Check workflow logs.'
             });
             return { success: false, error: 'No test result JSON found' };
+        }
+
+        // If no test files were generated, override result to failed
+        if (!testFilesFound && result.status === 'passed') {
+            console.warn('No test files found but result says PASSED — overriding to failed');
+            result.status = 'failed';
+            result.error = 'AI teammate reported passed but no test code files were generated';
         }
 
         const status = (result.status || '').toLowerCase();
