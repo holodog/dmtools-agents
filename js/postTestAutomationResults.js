@@ -64,10 +64,11 @@ function performGitOperations(branchName, commitMessage) {
 
         // Also stage any Go e2e test files in services/ directories
         try {
-            var e2eStaged = cli_execute_command({
-                command: 'git add services/*/e2e/*_test.go 2>/dev/null && echo "e2e tests staged"'
-            });
-            if (e2eStaged && e2eStaged.indexOf('e2e tests staged') !== -1) {
+            var e2eCheck = cli_execute_command({
+                command: 'ls services/*/e2e/*_test.go 2>/dev/null'
+            }) || '';
+            if (e2eCheck.trim()) {
+                cli_execute_command({ command: 'git add services/*/e2e/*_test.go' });
                 console.log('✅ Staged e2e test files from services/');
             }
         } catch (e) {
