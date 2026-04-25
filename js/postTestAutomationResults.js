@@ -50,27 +50,14 @@ function readResultJson() {
 
 function performGitOperations(branchName, commitMessage) {
     try {
-        // Diagnostic: list testing/ folder before staging
-        try {
-            var lsOutput = cli_execute_command({ command: 'find testing/tests/ -type f 2>/dev/null | head -20' }) || '';
-            console.log('Files in testing/tests/:', cleanCommandOutput(lsOutput) || '(empty)');
-        } catch (e) {
-            console.warn('Could not list testing/tests/:', e);
-        }
-
         // Stage testing/ folder only (outputs/ is gitignored — test artifacts should not be committed)
         console.log('Staging testing/ folder...');
         cli_execute_command({ command: 'git add testing/' });
 
         // Also stage any Go e2e test files in services/ directories
         try {
-            var e2eCheck = cli_execute_command({
-                command: 'ls services/*/e2e/*_test.go 2>/dev/null'
-            }) || '';
-            if (e2eCheck.trim()) {
-                cli_execute_command({ command: 'git add services/*/e2e/*_test.go' });
-                console.log('✅ Staged e2e test files from services/');
-            }
+            cli_execute_command({ command: 'git add services/*/e2e/*_test.go' });
+            console.log('✅ Attempted to stage e2e test files from services/');
         } catch (e) {
             console.warn('No e2e test files to stage (non-fatal):', e);
         }
@@ -196,21 +183,23 @@ function action(params) {
         console.log('=== Processing test automation results for', ticketKey, '===');
 
         // Step 0: Verify test code was actually generated before trusting results
+        // Use git status --porcelain (no shell metacharacters) to detect test files
         var testFilesFound = false;
         try {
-            // Check for Go e2e test files
-            var goTestOutput = cli_execute_command({
-                command: 'find services/ -path "*/e2e/*_test.go" -newer testing/tests/' + ticketKey + ' 2>/dev/null | head -5'
-            }) || '';
-            // Also check testing/ folder for any test code files
-            var testingTestOutput = cli_execute_command({
-                command: 'find testing/tests/' + ticketKey + ' -name "*.go" -o -name "*.ts" 2>/dev/null | head -5'
-            }) || '';
-            var hasGoTests = goTestOutput && goTestOutput.trim().length > 0;
-            var hasTestingTests = testingTestOutput && testingTestOutput.trim().length > 0;
-            testFilesFound = hasGoTests || hasTestingTests;
-            if (testFilesFound) {
-                console.log('Test files found — Go:', hasGoTests, 'Testing:', hasTestingTests);
+            var gitStatus = cli_execute_command({ command: 'git status --porcelain' }) || '';
+            var lines = (gitStatus || '').split('\n');
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i].trim();
+                if (line.indexOf('services/') !== -1 && line.indexOf('_test.go') !== -1) {
+                    testFilesFound = true;
+                    console.log('Found e2e test file:', line);
+                    break;
+                }
+                if (line.indexOf('testing/tests/' + ticketKey) !== -1) {
+                    testFilesFound = true;
+                    console.log('Found testing/ file:', line);
+                    break;
+                }
             }
         } catch (e) {
             console.warn('Could not verify test files (non-fatal):', e);
