@@ -52,7 +52,12 @@ function performGitOperations(branchName, commitMessage) {
     try {
         // Stage testing/ folder only (outputs/ is gitignored — test artifacts should not be committed)
         console.log('Staging testing/ folder...');
-        cli_execute_command({ command: 'git add testing/' });
+        try {
+            cli_execute_command({ command: 'git add testing/' });
+            console.log('Staged testing/ folder');
+        } catch (e) {
+            console.warn('No testing/ folder to stage (non-fatal):', e);
+        }
 
         // Stage frontend test files (Vitest unit tests)
         try {
@@ -285,7 +290,7 @@ function action(params) {
                     console.error('PR creation failed — resetting ticket to Backlog for retry');
                     try {
                         jira_post_comment({ key: ticketKey, comment: 'h3. ⚠️ PR Creation Failed\n\nTest code was pushed to branch {code}' + branchName + '{code} but the Pull Request could not be created.\n\nTicket moved back to *Backlog* — will be re-processed automatically. The next run will detect the existing branch and create the PR.\n\nError: ' + (prResult.error || 'unknown') });
-                        jira_move_to_status({ key: ticketKey, statusName: 'Backlog' });
+                        jira_move_to_status({ key: ticketKey, statusName: STATUSES.TODO });
                     } catch (e) { console.warn('Could not reset to Backlog:', e); }
                     try {
                         const smTriggerLabel = params.jobParams && params.jobParams.customParams && params.jobParams.customParams.removeLabel;
@@ -304,7 +309,7 @@ function action(params) {
                 console.warn('Git operations failed:', gitResult.error);
                 try {
                     jira_post_comment({ key: ticketKey, comment: 'h3. ⚠️ Git Operations Failed\n\nFailed to commit/push test code: ' + gitResult.error + '\n\nTicket moved back to *Backlog* — will be re-processed automatically.' });
-                    jira_move_to_status({ key: ticketKey, statusName: STATUSES.BACKLOG });
+                    jira_move_to_status({ key: ticketKey, statusName: STATUSES.TODO });
                 } catch (e) { console.warn('Could not reset to Backlog:', e); }
                 try {
                     jira_remove_label({ key: ticketKey, label: 'sm_test_automation_triggered' });
