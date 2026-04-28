@@ -4,8 +4,8 @@ You are reviewing a Pull Request that contains **automated test code** for a spe
 
 ## What you are reviewing
 
-- Test code written in `testing/tests/{TICKET-KEY}/`
-- Supporting components added to `testing/components/` or `testing/core/` if any
+- Test code written in `e2e/tests/*.spec.ts` (frontend Playwright) or `services/*/e2e/*_e2e_test.go` (backend Go)
+- Supporting fixtures added to `e2e/fixtures/` or `e2e/helpers/` (frontend)
 - The test was already executed — the PR description shows whether it PASSED or FAILED
 
 ## Review focus
@@ -16,22 +16,22 @@ You are reviewing a Pull Request that contains **automated test code** for a spe
 - Verify that the test fails for the right reason when it fails
 
 ### 2. Architecture compliance
-- Code must be only in `testing/` folder
-- Tests must follow the layered structure: `tests/` → `components/` → `frameworks/` → `core/`
-- Tests must not call framework implementations directly — they must go through components
-- Each test folder must have `README.md` and `config.yaml`
+- Frontend code must be only in `e2e/` folder
+- Frontend tests must use `page.route()` for API mocking, NOT a real backend
+- Frontend tests must use `setUserRole()` or `setDevAdminBypass()` from `../helpers/auth.ts` for auth
+- Frontend tests must NOT use complex Page Object patterns with constructor injection
+- Backend code must be only in `services/*/e2e/` folder
 
-### 3. Code quality & OOP
+### 3. Code quality & patterns
 - Clear, readable test code
-- No hardcoded credentials, URLs, or environment-specific values — must use `core/config/`
+- No hardcoded credentials, URLs, or environment-specific values — must use helpers from `e2e/helpers/`
 - Proper setup and teardown
-- No duplicate logic that should be in shared components
-- **OOP compliance**: flag violations of the principles defined in `test_automation_architecture.md`:
-  - Each Page/Screen/Service object must have a single responsibility
+- **Frontend patterns**: flag use of `time.sleep()` instead of Playwright auto-waiting; flag Selenium-style patterns; flag raw `fetch()` calls in tests instead of `page.route()`
+- **Backend patterns**: flag violations of OOP principles for Go code:
+  - Each Service object must have a single responsibility
   - Drivers, clients, and config must be injected via constructor — never instantiated inline
   - Components must implement interfaces from `core/interfaces/` — tests must depend on abstractions
   - Locators and HTTP internals must be encapsulated inside components, not exposed to tests
-- **Modern framework usage**: flag use of `time.sleep()` instead of explicit waits; flag raw `requests.get()` calls inline in tests instead of typed service objects; flag Selenium usage for new tests where Playwright is the project standard
 
 ### 4. Test result validity
 - If test PASSED: verify the assertions are meaningful (not trivially true)

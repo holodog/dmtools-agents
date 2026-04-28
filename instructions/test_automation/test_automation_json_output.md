@@ -83,7 +83,7 @@ Include:
 - Test case ticket key + summary
 - What was tested (1-2 sentences)
 - What passed / what failed (specific, not generic)
-- Test file: `{code}testing/tests/{TICKET-KEY}/test_{ticket_key}.py{code}`
+- Test file: `{code}e2e/tests/<feature>.spec.ts{code}` (frontend Playwright) or `{code}services/<service>/e2e/<feature>_e2e_test.go{code}` (backend Go)
 
 ### `outputs/pr_body.md` — GitHub PR body (GitHub Markdown format)
 

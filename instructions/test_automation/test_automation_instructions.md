@@ -14,8 +14,8 @@ The feature code is **already implemented and deployed** on the main branch. You
 
 | Test Type | Repository | Path |
 |-----------|------------|------|
-| Frontend UI tests (Playwright) | `ms_front` | `testing/tests/{TICKET-KEY}/` |
-| Backend API tests (Go) | `ms_back` | `services/<service>/e2e/<feature>_e2e_test.go` (test code) + `testing/tests/{TICKET-KEY}/` (docs) |
+| Frontend E2E tests (Playwright) | `ms_front` | `e2e/tests/*.spec.ts` |
+| Backend API tests (Go) | `ms_back` | `services/<service>/e2e/<feature>_e2e_test.go` |
 
 The ai-teammate workflow determines which repo to clone based on parent ticket labels (`frontend` or `backend`).
 
@@ -25,12 +25,11 @@ The ai-teammate workflow determines which repo to clone based on parent ticket l
 
 You may **only** write code in these locations:
 
-- **Test documentation & config**: `testing/tests/{TICKET-KEY}/` (README.md, config.yaml)
-- **Frontend Playwright tests**: `testing/tests/{TICKET-KEY}/` and `testing/components/pages/` (TypeScript files)
+- **Frontend E2E tests**: `e2e/tests/` (Playwright `.spec.ts` files), `e2e/fixtures/` (mock data), `e2e/helpers/` (shared utilities)
 - **Backend Go e2e tests**: `services/<service-name>/e2e/<feature>_e2e_test.go` — alongside existing e2e tests (see `e2e/rbac_authorization_test.go` for the pattern)
 
 **Never modify:**
-- Feature source code outside `testing/` and `services/*/e2e/`
+- Feature source code outside `e2e/` and `services/*/e2e/`
 - CI/CD configuration files
 - Any file not in the allowed locations above
 
@@ -38,35 +37,33 @@ You may **only** write code in these locations:
 
 ## Architecture
 
-Follow the architecture defined in `agents/instructions/test_automation/test_automation_architecture.md`.
+### Frontend E2E Tests (ms_front)
 
-Tests go in: `testing/tests/{TICKET-KEY}/` (docs) + `services/<service>/e2e/` (Go test code)
+Tests go in `e2e/tests/` with `.spec.ts` extension. Use Playwright with `page.route()` for API mocking.
 
-Each test ticket folder must contain:
 ```
-testing/tests/{TICKET-KEY}/
-├── README.md              # how to run this specific test
-└── config.yaml            # framework, platform, dependencies
-
-For Playwright (frontend):
-testing/tests/{TICKET-KEY}/test_{ticket_key}.ts   # Playwright test
-
-For Go httptest (backend):
-services/<service>/e2e/<feature>_e2e_test.go       # httptest-based e2e test
+e2e/
+├── playwright.config.ts        # Playwright configuration
+├── fixtures/                   # Mock data factories
+│   ├── mockTransactions.ts     # Transaction test data
+│   ├── mockAuctions.ts         # Auction test data
+│   └── index.ts                # Barrel export
+├── helpers/                    # Shared test utilities
+│   ├── auth.ts                 # Token injection (setUserRole, setDevAdminBypass)
+│   └── api-mocks.ts            # page.route() mock factory (mockApiRoutes)
+└── tests/                      # Actual E2E test files
+    ├── home.spec.ts            # Home page tests
+    ├── transactions.spec.ts    # Transaction page tests
+    └── ...                     # Feature-specific test files
 ```
 
-The `README.md` inside the ticket folder is mandatory. It must include:
-- How to install dependencies
-- The exact command to run this test
-- Environment variables or config required
-- Expected output when the test passes
+**Write tests directly** — import helpers from `../helpers/` and fixtures from `../fixtures/`.
+**Create new fixtures/helpers** only if no suitable one exists.
+**Reuse existing fixtures/helpers** — always check `e2e/fixtures/` and `e2e/helpers/` first.
 
-**Reuse existing components** from:
-- `testing/components/pages/` — web Page Objects (Playwright)
-- `testing/components/services/` — API Service Objects
-- `testing/core/` — shared models, config, utils
+### Backend Go E2E Tests (ms_back)
 
-**Create new components** only if no suitable one exists. Place them in the appropriate subfolder.
+Tests go in `services/<service>/e2e/<feature>_e2e_test.go`.
 
 ---
 
@@ -228,7 +225,7 @@ After writing the test:
 
 Before writing output files, you MUST complete these verification steps:
 
-1. **Verify test file exists** — run: `test -f services/<service>/e2e/<test_file>.go` (for Go) or `test -f testing/tests/{TICKET}/test_{ticket}.ts` (for Playwright)
+1. **Verify test file exists** — run: `test -f e2e/tests/<test_file>.spec.ts` (for Playwright) or `test -f services/<service>/e2e/<test_file>.go` (for Go)
 2. **Verify test compiles** — for Go tests: run `go vet ./services/<service>/e2e/...` and check exit code is 0
 3. **Verify test was actually executed** — check the test runner output contains test names and pass/fail indicators, NOT just compilation output
 4. **If compilation fails** — fix the errors and retry. Do NOT proceed with a broken test.
@@ -262,21 +259,43 @@ Detailed Jira-formatted bug description including reproduction steps, expected v
 
 Use for: Testing user-facing features in the React frontend
 
+Tests go in `e2e/tests/` with `.spec.ts` extension. Use the flat pattern:
+
 ```typescript
 import { test, expect } from '@playwright/test';
-import { LoginPage } from '../../../components/pages/LoginPage';
-import { User } from '../../../core/models/User';
+import { setDevAdminBypass, setUserRole } from '../helpers/auth';
+import { mockApiRoutes } from '../helpers/api-mocks';
+import { mockTransactions } from '../fixtures/mockTransactions';
 
-test('User can login with valid credentials', async ({ page }) => {
-  const loginPage = new LoginPage(page);
-  const user = User.createTestUser();
+test('MAJESENS-XX: Feature description', async ({ page }) => {
+  // 1. Set up auth if needed (BEFORE page.goto())
+  await setUserRole(page, 'user');
+  // or for admin routes: await setDevAdminBypass(page);
 
-  await loginPage.navigateTo();
-  await loginPage.loginAs(user);
-  
-  await expect(loginPage.getUserMenu()).toBeVisible();
+  // 2. Set up API mocks (BEFORE page.goto())
+  mockApiRoutes(page)
+    .withTransactions({ data: mockTransactions, pagination: { page: 1, limit: 10, total: 3, pages: 1 } });
+
+  // 3. Navigate to the page
+  await page.goto('/account/transactions');
+
+  // 4. Assert UI state
+  await expect(page.getByRole('heading', { name: 'Transaction History' })).toBeVisible();
 });
 ```
+
+**Key patterns:**
+- Call `setUserRole()` or `setDevAdminBypass()` **before** `page.goto()` — they use `page.addInitScript()`
+- Call `mockApiRoutes()` **before** `page.goto()` — they use `page.route()`
+- Use `expect(locator).toBeVisible()` — Playwright auto-waits
+- Tests use `page.route()` for mocking, NOT a real backend
+
+**Do NOT use:**
+- Complex Page Object patterns with constructor injection
+- Database seeding or real API calls in CI
+- `time.sleep()` or arbitrary waits
+- Import from `testing/` directory (it does not exist)
+- Import from `components/pages/` (no Page Object layer)
 
 ### API Tests (Go httptest)
 
@@ -348,20 +367,20 @@ Use for: Testing flows that span multiple services
 
 ```typescript
 import { test, expect } from '@playwright/test';
-import { apiClient } from '../../../core/utils/apiClient';
-import { AuctionPage } from '../../../components/pages/AuctionPage';
+import { setDevAdminBypass } from '../helpers/auth';
+import { mockApiRoutes } from '../helpers/api-mocks';
 
 test('Bid placement updates auction current price', async ({ page }) => {
-  // Setup: Create auction via API
-  const auction = await apiClient.createAuction(testUser);
-  
-  // Action: Place bid via UI
-  const auctionPage = new AuctionPage(page);
-  await auctionPage.navigateTo(auction.id);
-  await auctionPage.placeBid(100);
-  
-  // Assert: Auction price updated
-  await expect(auctionPage.getCurrentPrice()).resolves.toBe('100');
+  await setDevAdminBypass(page);
+  mockApiRoutes(page)
+    .withAuctions({ data: [mockAuction], pagination: { total: 1 } })
+    .withAuctionDetail(auctionId, mockAuction);
+
+  await page.goto('/auctions/' + auctionId);
+  await page.getByRole('button', { name: 'Place Bid' }).click();
+
+  // Verify price updated
+  await expect(page.getByText('$100')).toBeVisible();
 });
 ```
 
@@ -373,17 +392,17 @@ For real-time features (live auctions, chat):
 
 ```typescript
 import { test, expect } from '@playwright/test';
-import { WebSocketClient } from '../../../core/utils/webSocketClient';
 
 test('Live auction receives bid updates in real-time', async ({ page }) => {
-  const wsClient = new WebSocketClient('ws://localhost:8083/ws/auctions/{id}');
-  await wsClient.connect();
-  
-  // Wait for bid update
-  const bidUpdate = await wsClient.waitForMessage('bid_placed', 5000);
-  expect(bidUpdate.amount).toBe(100);
-  
-  await wsClient.disconnect();
+  // Mock the WebSocket connection
+  await page.routeWebSocket(({ page, url }) => {
+    page.on('console', msg => console.log(msg.text()));
+  });
+
+  // Or mock the WS transport at the network level
+  page.route('**/ws/auctions/*', async (route) => {
+    // Handle WebSocket upgrade
+  });
 });
 ```
 
@@ -400,18 +419,18 @@ test('Live auction receives bid updates in real-time', async ({ page }) => {
 Majesens uses role-based access control (USER, MANAGER, ADMIN). Test permission scenarios:
 
 ```typescript
+import { test, expect } from '@playwright/test';
+import { setDevAdminBypass, setUserRole } from '../helpers/auth';
+
 test('Only ADMIN can access admin dashboard', async ({ page }) => {
-  const adminPage = new AdminDashboard(page);
-  
-  // Regular user should be rejected
-  const user = await createUserWithRole('USER');
-  await adminPage.loginAndNavigate(user);
-  await expect(adminPage.getDashboard()).not.toBeVisible();
-  await expect(page).toHaveURL('/unauthorized');
-  
+  // Regular user should be redirected to login
+  await setUserRole(page, 'user');
+  await page.goto('/admin/dashboard');
+  await expect(page.getByRole('heading', { name: /login/i })).toBeVisible();
+
   // Admin should have access
-  const admin = await createUserWithRole('ADMIN');
-  await adminPage.loginAndNavigate(admin);
-  await expect(adminPage.getDashboard()).toBeVisible();
+  await setDevAdminBypass(page);
+  await page.goto('/admin/dashboard');
+  await expect(page.getByRole('heading', { name: /admin dashboard/i })).toBeVisible();
 });
 ```

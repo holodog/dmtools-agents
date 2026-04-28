@@ -17,9 +17,9 @@ ms_back/testing/              # Backend API tests (Go)
 ├── components/
 └── tests/
 
-ms_front/testing/             # Frontend UI tests (Playwright/TypeScript)
-├── core/
-├── components/
+ms_front/e2e/                 # Frontend E2E tests (Playwright)
+├── fixtures/
+├── helpers/
 └── tests/
 ```
 
@@ -58,209 +58,54 @@ testing/
     └── campaigns/
 ```
 
-### Frontend Test Structure (ms_front/testing/)
+### Frontend Test Structure (ms_front/e2e/)
 
 ```
-testing/
-│
-├── core/                           # Shared across ALL test types
-│   ├── models/                     # Domain models (User, Auction, Bid...)
-│   ├── config/                     # Environment configs, credentials
-│   ├── interfaces/                 # Abstract contracts (protocols)
-│   ├── utils/                      # Helpers, data generators, logging
-│
-├── frameworks/                     # Framework-specific implementations
-│   └── web/                        # Web UI Testing
-│       └── playwright/             # Playwright for React frontend
-│
-├── components/                     # Reusable test components
-│   └── pages/                      # Page Objects (Web - Playwright)
-│       ├── login_page
-│       ├── registration_page
-│       ├── home_page
-│       ├── auction_detail_page
-│       ├── auction_create_page
-│       ├── chat_page
-│       └── admin_dashboard
-│
-├── tests/                          # Actual test cases by ticket/story
-│   ├── MAJESENS-1/
-│   ├── MAJESENS-2/
-│   └── MAJESENS-3/
-│
-└── fixtures/                       # Shared test fixtures & data
-    ├── users/
-    ├── auctions/
-    └── campaigns/
+e2e/
+├── playwright.config.ts        # Playwright configuration
+├── fixtures/                   # Mock data factories
+│   ├── mockTransactions.ts     # Transaction test data
+│   ├── mockAuctions.ts         # Auction test data
+│   └── index.ts                # Barrel export
+├── helpers/                    # Shared test utilities
+│   ├── auth.ts                 # Token injection helpers
+│   └── api-mocks.ts            # page.route() mock factory
+└── tests/                      # Actual E2E test files
+    ├── home.spec.ts            # Home page tests
+    ├── transactions.spec.ts    # Transaction page tests
+    └── ...                     # Feature-specific test files
 ```
 
-## Architecture Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                                  TESTS                                       │
-│                                                                              │
-│    ┌──────────────┐      ┌──────────────┐      ┌──────────────┐            │
-│    │  MAJESENS-1  │      │  MAJESENS-2  │      │  MAJESENS-3  │            │
-│    │   ─────────  │      │   ─────────  │      │   ─────────  │            │
-│    │  TEST-1 (web)│      │ TEST-4 (api) │      │TEST-7 (web)  │            │
-│    │  TEST-2 (api)│      │ TEST-5 (web) │      │ TEST-8 (api) │            │
-│    └──────┬───────┘      └──────┬───────┘      └──────┬───────┘            │
-│           │                     │                     │                     │
-└───────────┼─────────────────────┼─────────────────────┼─────────────────────┘
-            │                     │                     │
-            ▼                     ▼                     ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              COMPONENTS                                      │
-│                        (Reusable Test Objects)                              │
-│                                                                              │
-│   ┌─────────────────┐                  ┌─────────────────┐                 │
-│   │     PAGES       │                  │    SERVICES     │                 │
-│   │   (Web UI)      │                  │     (API)       │                 │
-│   │                 │                  │                 │                 │
-│   │  • LoginPage    │                  │ • AuthService   │                 │
-│   │  • HomePage     │                  │ • AuctionService│                 │
-│   │  • AuctionPage  │                  │ • UserService   │                 │
-│   │  • ChatPage     │                  │ • ChatService   │                 │
-│   │  • AdminPage    │                  │ • PaymentService│                 │
-│   └────────┬────────┘                  └────────┬────────┘                 │
-│            │                                    │                          │
-└────────────┼────────────────────────────────────┼──────────────────────────┘
-             │                                    │
-             ▼                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                             FRAMEWORKS                                       │
-│                    (Technology Implementations)                              │
-│                                                                              │
-│  ┌───────────────────────────────────────────────────────────────────┐      │
-│  │         WEB                    │         API                       │      │
-│  │                                                                       │      │
-│  │  ┌─────────────┐              │  ┌─────────────┐                   │      │
-│  │  │ Playwright  │              │  │  Go httptest│                   │      │
-│  │  │  (TypeScript)│             │  │  (net/http) │                   │      │
-│  │  └─────────────┘              │  └─────────────┘                   │      │
-│  │  ┌─────────────┐              │  ┌─────────────┐                   │      │
-│  │  │   Vitest    │              │  │  REST client│                   │      │
-│  │  │  (unit)     │              │  │  (integration)                  │      │
-│  │  └─────────────┘              │  └─────────────┘                   │      │
-│  └───────────────────────────────────────────────────────────────────┘      │
-│                                                                              │
-└──────────────────────────────────┬──────────────────────────────────────────┘
-                                   │
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                               CORE                                           │
-│                    (Framework-Agnostic Foundation)                          │
-│                                                                              │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐            │
-│  │   MODELS   │  │  CONFIGS   │  │ INTERFACES │  │   UTILS    │            │
-│  │            │  │            │  │            │  │            │            │
-│  │ • User     │  │ • Env URLs │  │ • IPage    │  │ • Logger   │            │
-│  │ • Auction  │  │ • Creds    │  │ • IService │  │ • DataGen  │            │
-│  │ • Bid      │  │ • Timeouts │  │ • IClient  │  │ • Waiters  │            │
-│  │ • ChatMsg  │  │ • DB config│  │            │  │ • Asserts  │            │
-│  │ • Payment  │  │            │  │            │  │            │            │
-│  └────────────┘  └────────────┘  └────────────┘  └────────────┘            │
-└────────────────────────────────────────────────────────────────────────────┘
-```
-
-## Layer Responsibilities
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  LAYER           │  RESPONSIBILITY                              │
-├─────────────────────────────────────────────────────────────────┤
-│                  │                                              │
-│  TESTS           │  • Test logic per ticket/story              │
-│                  │  • Uses components, not frameworks directly │
-│                  │  • Contains test config (which framework)   │
-│                  │  • Located: testing/tests/{TICKET-KEY}/     │
-│                  │                                              │
-├─────────────────────────────────────────────────────────────────┤
-│                  │                                              │
-│  COMPONENTS      │  • Reusable Page/Service objects            │
-│                  │  • Business-level abstractions              │
-│                  │  • Framework-agnostic interfaces            │
-│                  │  • Pages: testing/components/pages/         │
-│                  │  • Services: testing/components/services/   │
-│                  │                                              │
-├─────────────────────────────────────────────────────────────────┤
-│                  │                                              │
-│  FRAMEWORKS      │  • Concrete implementations                 │
-│                  │  • Playwright (web), Go httptest (API)      │
-│                  │  • Wraps vendor libraries                   │
-│                  │                                              │
-├─────────────────────────────────────────────────────────────────┤
-│                  │                                              │
-│  CORE            │  • Shared models & configs                  │
-│                  │  • Abstract interfaces/protocols            │
-│                  │  • Utilities & reporting                    │
-│                  │  • Models: testing/core/models/             │
-│                  │  • Config: testing/core/config/             │
-│                  │                                              │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## Test Configuration Per Ticket
-
-```
-tests/MAJESENS-XX/
-├── README.md              # how to run this specific test
-├── config.yaml            # framework, platform, dependencies
-└── test_{ticket_key}.ts   # TypeScript Playwright test
-or
-└── test_{ticket_key}.go   # Go httptest test
-
-Example config.yaml:
-─────────────────────
-test_id: MAJESENS-XX
-type: web | api
-framework: playwright | go-httptest
-dependencies: []
-```
-
-## Majesens Domain Models
-
-### Core Entities
-
-| Model | Description | Key Fields |
-|-------|-------------|------------|
-| `User` | Platform user | id, email, firstName, lastName, role (USER/MANAGER/ADMIN), avatarUrl, emailVerified |
-| `Auction` | Auction listing | id, sellerId, title, description, category, startTime, endTime, minIncrement, reservePrice, currentPrice, status, imageUrls |
-| `Bid` | Auction bid | id, auctionId, bidderId, amount, maxAmount (auto-bid), isAuto, status, bidTime |
-| `ChatMessage` | Chat message | id, chatId, senderId, content, timestamp, isRead |
-| `Payment` | Payment transaction | id, userId, amount, currency, status, stripePaymentIntentId, createdAt |
-| `CharityCampaign` | Charity campaign | id, title, description, goalAmount, currentAmount, endDate, status, beneficiary |
-
-### Majesens Services
-
-| Service | Port | Purpose | API Base Path |
-|---------|------|---------|---------------|
-| authentication-service | 8084 | User auth, registration, OAuth | `/authentication` |
-| user-management-service | 8086 | User profiles, Cloudinary | `/user-management` |
-| auctions-service | 8083 | Real-time auctions, bids | `/auctions` |
-| chat-service | 8085 | Real-time chat (WebSocket) | `/chat` |
-| payments-service | 8088 | Stripe integration | `/payments` |
-| notifications-service | 8087 | Email, push, SMS | `/notifications` |
-| charity-campaigns-service | 8089 | Charity campaigns | `/charity-campaigns` |
+**Key principles for frontend tests:**
+- Tests go in `e2e/tests/` with `.spec.ts` extension
+- Use `page.route()` for API mocking — no backend needed in CI
+- Use `setUserRole(page, role)` or `setDevAdminBypass(page)` from `../helpers/auth.ts` for auth
+- Write tests directly — no Page Object layer, no constructor injection
+- Keep tests simple and self-contained
 
 ## Key Principles
 
 | Principle | Description |
 |-----------|-------------|
-| **Separation** | Tests don't know about frameworks, only components |
-| **Abstraction** | Components use interfaces, not concrete implementations |
-| **Flexibility** | Easy to swap frameworks without changing tests |
-| **Reusability** | Same business logic, different test scenarios |
-| **Isolation** | Each test ticket has its own config and dependencies |
+| **Simplicity** | Frontend tests are flat — no layered abstractions |
+| **API Mocking** | All Playwright tests use `page.route()` — no backend needed |
+| **Auth Injection** | Use `setUserRole()` or `setDevAdminBypass()` helpers |
+| **Reusability** | Share mock data via `e2e/fixtures/` and utilities via `e2e/helpers/` |
+| **Isolation** | Each test sets up its own mocks, no shared state between tests |
 
 ## OOP & Modern Practices
 
-**Apply OOP throughout all test code:**
-- **Single Responsibility** — each Page/Service object handles one domain area only
-- **Dependency Injection** — pass drivers, clients, and config via constructor; never instantiate them inside components
-- **Interfaces first** — all components implement contracts defined in `core/interfaces/`; tests depend on interfaces, not concrete classes
-- **Encapsulation** — expose only high-level actions (e.g. `loginPage.loginAs(user)`), never raw selectors or HTTP internals
+**Frontend (Playwright) — simple patterns:**
+- **Direct usage** — tests call Playwright APIs directly with helper utilities
+- **No Page Objects** — no constructor injection, no interfaces, no layered architecture
+- **Auto-waiting** — use Playwright's built-in auto-wait (e.g., `expect(locator).toBeVisible()`)
+- **API mocking** — use `page.route()` for all API calls
+
+**Backend (Go httptest):**
+- **Single Responsibility** — each Service object handles one domain area only
+- **Dependency Injection** — pass drivers, clients, and config via constructor
+- **Interfaces first** — all components implement contracts defined in `core/interfaces/`
+- **Encapsulation** — expose only high-level actions, never raw selectors or HTTP internals
 
 **Use modern, idiomatic frameworks:**
 - **Web**: Playwright with async/await, built-in waits, and native matchers
@@ -268,31 +113,37 @@ dependencies: []
 - **Assertions**: Use framework-native matchers (e.g. `expect(locator).toBeVisible()`) — not manual boolean checks
 
 **Test code quality:**
-- No hardcoded URLs, credentials, or environment values — use `core/config/`
-- No logic duplication — extract shared flows into components
+- No hardcoded URLs or credentials — use the helpers from `e2e/helpers/` (frontend) or `core/config/` (backend)
+- No logic duplication — extract shared flows into `e2e/fixtures/` or `e2e/helpers/` (frontend)
 - Tests must be deterministic: no `time.sleep()`, use explicit waits instead
 - For WebSocket tests (chat, live auctions): use proper connection handling and message subscription patterns
 
 ## Majesens-Specific Test Patterns
 
-### Web UI Tests (Playwright + TypeScript)
+### Frontend E2E Tests (Playwright + TypeScript)
 
 ```typescript
-// Example structure for MAJESENS-XX test
 import { test, expect } from '@playwright/test';
-import { LoginPage } from '../../../components/pages/LoginPage';
-import { HomePage } from '../../../components/pages/HomePage';
-import { User } from '../../../core/models/User';
+import { setDevAdminBypass, setUserRole } from '../helpers/auth';
+import { mockApiRoutes } from '../helpers/api-mocks';
+import { mockTransactions } from '../fixtures/mockTransactions';
 
-test('MAJESENS-XX: User can login successfully', async ({ page }) => {
-  const loginPage = new LoginPage(page);
-  const homePage = new HomePage(page);
-  const testUser = User.createTestUser();
+test('MAJESENS-XX: User can view transactions', async ({ page }) => {
+  // 1. Set up auth BEFORE navigation
+  await setUserRole(page, 'user');
 
-  await loginPage.navigateTo();
-  await loginPage.loginAs(testUser);
-  
-  await expect(homePage.getUserMenu()).toBeVisible();
+  // 2. Set up API mocks BEFORE navigation
+  mockApiRoutes(page).withTransactions({
+    data: mockTransactions,
+    pagination: { page: 1, limit: 10, total: 3, pages: 1 },
+  });
+
+  // 3. Navigate
+  await page.goto('/account/transactions');
+
+  // 4. Assert — Playwright auto-waits
+  await expect(page.getByRole('heading', { name: 'Transaction History' })).toBeVisible();
+  await expect(page.getByText('Romantic Dinner for Two')).toBeVisible();
 });
 ```
 
@@ -315,13 +166,13 @@ func TestMAJESENS_XX_CreateAuction(t *testing.T) {
 
     authService := services.NewAuthService(ts.URL)
     auctionService := services.NewAuctionService(ts.URL)
-    
+
     user := models.CreateTestUser()
     token := authService.Login(user)
-    
+
     auction := models.CreateTestAuction(user.ID)
     response := auctionService.CreateAuction(token, auction)
-    
+
     if response.StatusCode != http.StatusCreated {
         t.Fatalf("Expected 201, got %d", response.StatusCode)
     }
@@ -334,12 +185,13 @@ For Majesens tests, use the following test data sources:
 
 | Data Type | Source | Notes |
 |-----------|--------|-------|
-| **Test Users** | PostgreSQL `users` table (auth DB) | Created via registration API or seeded fixtures |
-| **Test Auctions** | PostgreSQL `auctions` table | Use factory pattern with valid default values |
-| **Test Bids** | PostgreSQL `bids` table | Always link to valid auction and user |
-| **Test Messages** | Generated per-test | No persistence needed for chat tests |
-| **Test Payments** | Stripe test mode | Use Stripe test cards, never real cards |
-| **Test Images** | Cloudinary test folder | Use test upload preset |
+| **Frontend (E2E)** | Mock data in `e2e/fixtures/` | Use `page.route()` — no backend needed |
+| **Test Users** | PostgreSQL `users` table (auth DB) | Created via registration API or seeded fixtures (backend) |
+| **Test Auctions** | PostgreSQL `auctions` table | Use factory pattern with valid default values (backend) |
+| **Test Bids** | PostgreSQL `bids` table | Always link to valid auction and user (backend) |
+| **Test Messages** | Generated per-test | No persistence needed for chat tests (backend) |
+| **Test Payments** | Stripe test mode | Use Stripe test cards, never real cards (backend) |
+| **Test Images** | Cloudinary test folder | Use test upload preset (backend) |
 
 ### CI Credentials for Majesens
 
