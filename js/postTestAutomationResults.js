@@ -395,7 +395,7 @@ function action(params) {
 
         if (passed) {
             try {
-                var passedStatus = noCodeChanges ? STATUSES.PASSED : STATUSES.IN_REVIEW_PASSED;
+                var passedStatus = noCodeChanges ? STATUSES.PASSED : STATUSES.PR_READY;
                 jira_move_to_status({ key: ticketKey, statusName: passedStatus });
                 console.log('✅ Passed — moved', ticketKey, 'to', passedStatus);
             } catch (e) {
