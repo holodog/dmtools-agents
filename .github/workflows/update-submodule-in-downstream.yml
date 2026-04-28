@@ -3,6 +3,7 @@ name: Update submodule in downstream repos
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   update-downstream:
