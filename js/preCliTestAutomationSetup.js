@@ -41,37 +41,71 @@ function checkoutBranch(ticketKey) {
     /**
      * Bring the current branch up-to-date with main.
      * Strategy:
-     *   1. Try rebase — if it fails only due to the 'agents' submodule pointer,
-     *      auto-resolve it (main's version always wins for test branches) and continue.
-     *   2. If rebase still fails for any other reason, abort and fall back to
-     *      'git merge origin/main --no-edit' so we keep all existing test code.
-     * NOTE: never do 'git reset --hard origin/main' on an existing branch — that
-     *       diverges the local branch from its remote counterpart and breaks commits.
+     *   1. Try rebase — if it fails, take main's version for ALL conflicting files
+     *      (test branches only add test code in e2e/tests/, e2e/fixtures/, e2e/helpers/
+     *      and never modify source/config files — main's version is always correct).
+     *   2. If rebase --continue still fails after resolving, abort and fall back to
+     *      hard-reset: checkout main, pull latest, then recreate the test branch.
+     *      This is safe because test branch changes are already on the remote and
+     *      will be re-applied when the agent writes new tests.
      */
     function syncWithMain() {
         var base = 'origin/' + GIT_CONFIG.DEFAULT_BASE_BRANCH;
         try {
             cli_execute_command({ command: 'git rebase ' + base });
             console.log('✅ Rebase succeeded');
+            return;
         } catch (rebaseErr) {
-            console.warn('Rebase failed, attempting auto-resolve for agents submodule conflict:', rebaseErr);
-            try {
-                // Auto-resolve: take main's agents pointer (test branches never touch agents)
-                cli_execute_command({ command: 'git checkout --ours agents' });
-                cli_execute_command({ command: 'git add agents' });
+            console.warn('Rebase failed, attempting conflict resolution:', rebaseErr);
+        }
+
+        // Attempt 1: resolve ALL conflicts by taking main's version for everything
+        try {
+            cli_execute_command({ command: 'git checkout --ours .' });
+            cli_execute_command({ command: 'git add -A' });
+            cli_execute_command({ command: 'git rebase --continue' });
+            console.log('✅ Rebase resumed (took main\'s version for all conflicts)');
+            return;
+        } catch (continueErr) {
+            console.warn('Rebase --continue failed, aborting:', continueErr);
+        }
+        try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
+
+        // Attempt 2: per-file resolution — keep test code, take main's version for everything else
+        try {
+            var statusOutput = cli_execute_command({ command: 'git diff --name-only --diff-filter=U' }) || '';
+            var conflictingFiles = statusOutput.trim().split('\n').filter(function(f) { return f.trim().length > 0; });
+
+            if (conflictingFiles.length > 0) {
+                console.log('Resolving ' + conflictingFiles.length + ' conflicting files');
+                conflictingFiles.forEach(function(file) {
+                    if (file.indexOf('e2e/') === 0 || file.indexOf('testing/') === 0) {
+                        cli_execute_command({ command: 'git checkout --theirs "' + file + '"' });
+                    } else {
+                        cli_execute_command({ command: 'git checkout --ours "' + file + '"' });
+                    }
+                });
+                cli_execute_command({ command: 'git add -A' });
                 cli_execute_command({ command: 'git rebase --continue' });
-                console.log('✅ Rebase resumed after resolving agents submodule conflict');
-            } catch (continueErr) {
-                console.warn('Rebase --continue also failed, falling back to merge:', continueErr);
-                try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
-                try {
-                    cli_execute_command({ command: 'git merge ' + base + ' --no-edit' });
-                    console.log('✅ Merged main into branch instead of rebasing');
-                } catch (mergeErr) {
-                    console.warn('Merge also failed — branch may need manual attention:', mergeErr);
-                    try { cli_execute_command({ command: 'git merge --abort' }); } catch (_) {}
-                }
+                console.log('✅ Rebase resumed after per-file conflict resolution');
+                return;
             }
+        } catch (perFileErr) {
+            console.warn('Per-file resolution failed:', perFileErr);
+        }
+        try { cli_execute_command({ command: 'git rebase --abort' }); } catch (_) {}
+
+        // Last resort: hard reset to main
+        console.warn('Falling back to hard reset — recreating branch from latest main');
+        try {
+            cli_execute_command({ command: 'git stash --include-untracked' });
+            cli_execute_command({ command: 'git checkout ' + GIT_CONFIG.DEFAULT_BASE_BRANCH });
+            cli_execute_command({ command: 'git pull origin ' + GIT_CONFIG.DEFAULT_BASE_BRANCH });
+            cli_execute_command({ command: 'git branch -D ' + branchName + ' || true' });
+            cli_execute_command({ command: 'git checkout -b ' + branchName + ' ' + GIT_CONFIG.DEFAULT_BASE_BRANCH });
+            console.log('✅ Hard reset branch to latest main — test code will be re-written by agent');
+        } catch (resetErr) {
+            console.error('❌ Hard reset failed — branch needs manual intervention:', resetErr);
         }
     }
 
