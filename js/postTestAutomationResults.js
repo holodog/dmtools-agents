@@ -54,10 +54,26 @@ function performGitOperations(branchName, commitMessage) {
         console.log('Staging testing/ folder...');
         cli_execute_command({ command: 'git add testing/' });
 
+        // Stage frontend test files (Vitest unit tests)
+        try {
+            cli_execute_command({ command: 'git add src/test/' });
+            console.log('Staged Vitest test files from src/test/');
+        } catch (e) {
+            console.warn('No Vitest test files to stage (non-fatal):', e);
+        }
+
+        // Stage Playwright E2E test files
+        try {
+            cli_execute_command({ command: 'git add e2e/tests/' });
+            console.log('Staged Playwright E2E test files from e2e/tests/');
+        } catch (e) {
+            console.warn('No Playwright E2E test files to stage (non-fatal):', e);
+        }
+
         // Also stage any Go e2e test files in services/ directories
         try {
             cli_execute_command({ command: 'git add services/*/e2e/*_test.go' });
-            console.log('✅ Attempted to stage e2e test files from services/');
+            console.log('Staged e2e test files from services/');
         } catch (e) {
             console.warn('No e2e test files to stage (non-fatal):', e);
         }
@@ -198,6 +214,16 @@ function action(params) {
                 if (line.indexOf('testing/tests/' + ticketKey) !== -1) {
                     testFilesFound = true;
                     console.log('Found testing/ file:', line);
+                    break;
+                }
+                if (line.indexOf('src/test/') !== -1) {
+                    testFilesFound = true;
+                    console.log('Found Vitest test file:', line);
+                    break;
+                }
+                if (line.indexOf('e2e/tests/') !== -1) {
+                    testFilesFound = true;
+                    console.log('Found Playwright E2E test file:', line);
                     break;
                 }
             }
