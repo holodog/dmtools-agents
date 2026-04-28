@@ -1,0 +1,38 @@
+name: Update submodule in downstream repos
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  update-downstream:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo: [ms_back, ms_front, ms_root]
+      fail-fast: false
+    steps:
+      - name: Checkout downstream repo
+        uses: actions/checkout@v4
+        with:
+          repository: holodog/${{ matrix.repo }}
+          token: ${{ secrets.DOWNSTREAM_PAT }}
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Update submodule to latest main
+        run: |
+          git submodule update --init --recursive
+          cd agents
+          git checkout main
+          git pull origin main
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add agents
+          git diff --cached --quiet || {
+            git commit -m "chore(agents): update submodule to latest main"
+            git push origin master
+          }
