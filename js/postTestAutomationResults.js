@@ -266,7 +266,6 @@ function action(params) {
                     testFilesFound = true;
                 }
             }
-            }
         } catch (e) {
             console.warn('Could not verify test files (non-fatal):', e);
         }
