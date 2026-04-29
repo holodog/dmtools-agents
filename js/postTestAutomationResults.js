@@ -90,16 +90,26 @@ function performGitOperations(branchName, commitMessage) {
 
         // Also stage any Go e2e test files in services/ directories
         try {
-            cli_execute_command({ command: 'git add services/*/e2e/*_test.go 2>/dev/null || true' });
+            cli_execute_command({ command: 'git add services/' });
             console.log('Staged e2e test files from services/');
         } catch (e) {
             console.log('No e2e test files in services/ to stage (continuing)');
         }
 
+        // Check if any test files were actually staged (not outputs/ or other files)
         var rawStatus = cli_execute_command({ command: 'git status --porcelain' }) || '';
         console.log('Raw git status length:', rawStatus.length);
         var statusOutput = cleanCommandOutput(rawStatus);
         console.log('Cleaned git status:', statusOutput || '(empty)');
+
+        // Only count actual test file changes (not outputs/ files)
+        var testChanges = (statusOutput || '').split('\n').filter(function(line) {
+            return line.indexOf('e2e/tests/') !== -1 ||
+                   line.indexOf('testing/') !== -1 ||
+                   line.indexOf('src/test/') !== -1 ||
+                   line.indexOf('services/') !== -1;
+        }).join('\n');
+        var hasTestChanges = testChanges && testChanges.trim().length > 0;
 
         if (!statusOutput || !statusOutput.trim()) {
             console.warn('No new changes to commit in testing/ (files may already exist on main)');
@@ -120,6 +130,12 @@ function performGitOperations(branchName, commitMessage) {
                 console.warn('Failed to push branch:', pushErr);
                 return { success: false, error: 'No test files were written and could not push branch' };
             }
+        }
+
+        // No test files staged even if outputs/ files exist (AI agent may have hallucinated results)
+        if (!hasTestChanges) {
+            console.warn('No test files were staged — AI agent did not create any test code');
+            return { success: false, error: 'No test files were created by AI agent' };
         }
 
         console.log('Committing...');
