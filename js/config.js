@@ -30,6 +30,7 @@ const STATUSES = {
     FAILED: 'Failed',                                // Test automation passed review
     PASSED: 'Passed',                                // Test automation passed review
     IN_REVIEW_PASSED: 'In Review - Passed',          // Test ran and passed, awaiting code review
+    CI_PENDING: 'CI Pending',                          // PR created, waiting for CI results
     IN_REVIEW_FAILED: 'In Review - Failed',          // Test ran and failed, awaiting code review
     IN_TESTING: 'In Testing',                        // Test cases generated, automation in progress
     BUG_TO_FIX: 'Bug To Fix'                         // Bug linked/created for this TC, waiting for fix
@@ -59,7 +60,12 @@ const LABELS = {
     NEEDS_API_IMPLEMENTATION: 'needs_api_implementation',
     NEEDS_CORE_IMPLEMENTATION: 'needs_core_implementation',
     AI_TEST_AUTOMATION: 'ai_test_automation',
-    PR_APPROVED: 'pr_approved'              // Added to PR and ticket when AI approves, removed after merge attempt
+    PR_APPROVED: 'pr_approved',              // Added to PR and ticket when AI approves, removed after merge attempt
+    // New CI-based test automation flow (parallel with existing, labeled with new_ prefix)
+    NEW_SM_TEST_AUTOMATION: 'new_sm_test_automation_triggered',
+    NEW_SM_CI_CHECK: 'new_sm_ci_check_triggered',
+    NEW_SM_CI_REWORK: 'new_sm_ci_rework_triggered',
+    NEW_CI_RETRY: 'new_ci_retry'
 };
 
 // Git Configuration

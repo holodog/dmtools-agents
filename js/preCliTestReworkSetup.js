@@ -164,6 +164,13 @@ function action(params) {
         console.log('Fetching PR discussions...');
         const discussionData = gh.fetchDiscussionsAndRawData(repoInfo.owner, repoInfo.repo, pr.number);
 
+        // Step 4.6: Check for CI failures on the PR head commit
+        // Writes ci_failures.md to input folder for the coding agent to read
+        const headSha = prDetails.head ? prDetails.head.sha : null;
+        if (headSha) {
+            gh.detectFailedChecks(repoInfo.owner, repoInfo.repo, headSha, inputFolder);
+        }
+
         // Step 6: Write context files
         gh.writePRContext(inputFolder, prDetails, diff, discussionData.markdown, discussionData.rawThreads);
 
