@@ -310,6 +310,9 @@ function action(params) {
         // Step 7: Remove SM trigger label
         try { jira_remove_label({ key: ticketKey, label: LABELS.NEW_SM_TEST_AUTOMATION }); } catch (e) {}
 
+        // Step 7b: Remove stale sm_test_stuck_triggered label (added by In Dev stuck rule)
+        try { jira_remove_label({ key: ticketKey, label: 'sm_test_stuck_triggered' }); } catch (e) {}
+
         // Step 8: Add AI test automation label
         try { jira_add_label({ key: ticketKey, label: LABELS.AI_TEST_AUTOMATION }); } catch (e) {}
 
