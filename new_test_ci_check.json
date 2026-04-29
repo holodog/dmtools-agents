@@ -1,0 +1,11 @@
+{
+  "name": "JSRunner",
+  "params": {
+    "jsPath": "agents/js/checkNewTestCiStatus.js",
+    "jobParams": {
+      "customParams": {
+        "removeLabel": "new_sm_ci_check_triggered"
+      }
+    }
+  }
+}
