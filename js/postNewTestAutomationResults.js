@@ -30,8 +30,40 @@ function readFile(path) {
     }
 }
 
+function checkExistingTestFiles() {
+    var found = [];
+    // Check git index for test files
+    try {
+        var raw = cli_execute_command({ command: 'git ls-files e2e/tests/' }) || '';
+        var lines = raw.split('\n');
+        lines.forEach(function(f) {
+            if (f.trim() && f.indexOf('test_MAJESENS-') >= 0 && found.indexOf(f.trim()) === -1) {
+                found.push(f.trim());
+            }
+        });
+    } catch (e) {}
+    try {
+        var raw2 = cli_execute_command({ command: 'git ls-files testing/' }) || '';
+        var lines2 = raw2.split('\n');
+        lines2.forEach(function(f) {
+            if (f.trim() && found.indexOf(f.trim()) === -1) found.push(f.trim());
+        });
+    } catch (e) {}
+    try {
+        var raw3 = cli_execute_command({ command: 'git ls-files src/test/' }) || '';
+        var lines3 = raw3.split('\n');
+        lines3.forEach(function(f) {
+            if (f.trim() && found.indexOf(f.trim()) === -1) found.push(f.trim());
+        });
+    } catch (e) {}
+    return found;
+}
+
 function performGitOperations(branchName, commitMessage) {
     try {
+        // Clean agents submodule — AI agent may have modified files inside it
+        try { cli_execute_command({ command: 'git submodule update --init --recursive --force' }); } catch (e) {}
+
         // Stage testing/ folder
         try { cli_execute_command({ command: 'git add testing/' }); } catch (e) {}
 
@@ -45,10 +77,22 @@ function performGitOperations(branchName, commitMessage) {
         try { cli_execute_command({ command: 'git add services/*/e2e/*_test.go' }); } catch (e) {}
 
         var rawStatus = cli_execute_command({ command: 'git status --porcelain' }) || '';
-        var statusOutput = cleanCommandOutput(rawStatus);
+        var statusLines = rawStatus.split('\n').filter(function(line) {
+            var trimmed = line.trim();
+            // Ignore untracked input/ folder and agents submodule dirty content
+            return trimmed &&
+                trimmed.indexOf('?? input/') !== 0 &&
+                trimmed.indexOf(' M agents') !== 0 &&
+                trimmed.indexOf('M agents') !== 0;
+        }).join('\n');
 
-        if (!statusOutput || !statusOutput.trim()) {
-            console.warn('No new changes to commit in testing/');
+        if (!statusLines || !statusLines.trim()) {
+            console.log('No new changes to commit — checking if test files already exist');
+            var existingTests = checkExistingTestFiles();
+            if (existingTests.length > 0) {
+                console.log('Test files already exist in index: ' + existingTests.join(', '));
+                return { success: true, branchName: branchName, noNewCommit: true };
+            }
             var remoteBranchCheck = cleanCommandOutput(
                 cli_execute_command({ command: 'git ls-remote --heads origin ' + branchName }) || ''
             );
@@ -64,9 +108,19 @@ function performGitOperations(branchName, commitMessage) {
         }
 
         console.log('Committing...');
-        cli_execute_command({
-            command: 'git commit -m "' + commitMessage.replace(/"/g, '\\"') + '"'
-        });
+        try {
+            cli_execute_command({
+                command: 'git commit -m "' + commitMessage.replace(/"/g, '\\"') + '"'
+            });
+        } catch (commitErr) {
+            console.warn('Commit failed, checking for existing test files:', commitErr);
+            var existingOnFail = checkExistingTestFiles();
+            if (existingOnFail.length > 0) {
+                console.log('Test files already exist in index: ' + existingOnFail.join(', '));
+                return { success: true, branchName: branchName, noNewCommit: true };
+            }
+            throw commitErr;
+        }
 
         console.log('Pushing to remote...');
         try {
