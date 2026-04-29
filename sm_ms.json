@@ -183,7 +183,7 @@
           "skipIfLabel": "sm_test_no_pr_triggered",
           "addLabel": "sm_test_no_pr_triggered",
           "workflowRef": "master",
-          "enabled": true
+          "enabled": false
         },
         {
           "description": "In Development Test Cases stuck (AI run never completed) → Backlog",

@@ -29,10 +29,21 @@ function action(params) {
         ? actualParams.metadata.contextId + '_wip'
         : 'new_test_ci_rework_wip';
 
+    const customParams = (actualParams.customParams) ||
+        (params.jobParams && params.jobParams.customParams) ||
+        (params.customParams);
+    const removeLabel = customParams && customParams.removeLabel;
+
     function releaseLock() {
         try { jira_remove_label({ key: ticketKey, label: wipLabel }); } catch (e) {}
         try { jira_remove_label({ key: ticketKey, label: LABELS.NEW_SM_CI_REWORK }); } catch (e) {}
         try { jira_remove_label({ key: ticketKey, label: LABELS.NEW_CI_RETRY }); } catch (e) {}
+        if (removeLabel) {
+            try {
+                jira_remove_label({ key: ticketKey, label: removeLabel });
+                console.log('✅ Removed SM label:', removeLabel);
+            } catch (e) {}
+        }
     }
 
     try {
