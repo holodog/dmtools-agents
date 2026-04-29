@@ -331,6 +331,16 @@ function action(params) {
             console.warn('Failed to move ticket status:', e);
         }
 
+        // Step 4b: Add pr_approved label after successful rework so retry_merge_test can auto-merge
+        if (passed) {
+            try {
+                jira_add_label({ key: ticketKey, label: LABELS.PR_APPROVED });
+                console.log('✅ Added pr_approved label');
+            } catch (e) {
+                console.warn('Failed to add pr_approved label:', e);
+            }
+        }
+
         // Step 6: Post Jira comment
         try {
             const statusEmoji = passed ? '✅' : '❌';

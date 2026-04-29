@@ -172,12 +172,18 @@ function action(params) {
         var pr = findOpenPRForBranch(owner, repo, branchName);
 
         if (!pr) {
-            console.warn('No open PR found for branch', branchName);
+            console.warn('No open PR found for branch', branchName, '— moving to In Rework');
             jira_post_comment({
                 key: ticketKey,
-                comment: 'h3. ⚠️ CI Status Check — No PR Found\n\nNo open PR found for branch {code}' + branchName + '{code}.\n\nPlease check if test code was pushed correctly.'
+                comment: 'h3. ⚠️ No PR Found — Moving to In Rework\n\nNo open PR found for branch {code}' + branchName + '{code}.\nTest code was not pushed. Moving to In Rework to re-generate test code.\n\n*Branch*: {code}' + branchName + '{code}'
             });
-            return { success: true, action: 'no_pr', ticketKey: ticketKey };
+            try {
+                jira_move_to_status({ key: ticketKey, statusName: STATUSES.IN_REWORK });
+                console.log('✅ Moved to In Rework');
+            } catch (e) {
+                console.warn('Failed to move to In Rework:', e);
+            }
+            return { success: true, action: 'rework', ticketKey: ticketKey };
         }
 
         console.log('Found PR #' + pr.number);

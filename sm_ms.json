@@ -177,6 +177,24 @@
           "localExecution": true
         },
         {
+          "description": "CI Pending Test Cases with no open PR (re-check) → In Rework",
+          "jql": "project = MAJESENS AND issuetype in ('Test Case') AND status in ('CI Pending') AND labels = 'new_sm_ci_check_triggered'",
+          "configFile": "agents/new_test_ci_rework.json",
+          "skipIfLabel": "sm_test_no_pr_triggered",
+          "addLabel": "sm_test_no_pr_triggered",
+          "workflowRef": "master",
+          "enabled": true
+        },
+        {
+          "description": "In Development Test Cases stuck (AI run never completed) → Backlog",
+          "jql": "project = MAJESENS AND issuetype in ('Test Case') AND status in ('In Development') AND labels = 'sm_test_automation_triggered'",
+          "configFile": "agents/test_case_automation.json",
+          "skipIfLabel": "sm_test_stuck_triggered",
+          "addLabel": "sm_test_stuck_triggered",
+          "workflowRef": "master",
+          "enabled": true
+        },
+        {
           "description": "In Review Test Cases → trigger pr_test_automation_review",
           "jql": "project = MAJESENS AND issuetype in ('Test Case') AND status in ('In Review - Passed', 'In Review - Failed') AND labels NOT IN ('pr_approved', 'ai_test_automation')",
           "configFile": "agents/pr_test_automation_review.json",
