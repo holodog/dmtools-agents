@@ -50,6 +50,19 @@ Run `mkdir -p outputs` first to ensure the directory exists.
 
 `response.md` and `pr_body.md` contain the same information but formatted differently — Jira MD vs GitHub MD.
 
+## ⚠️ CRITICAL VERIFICATION STEP — Before you finish
+
+You MUST verify that ALL files you claim to have created actually exist on disk. Do NOT skip this step.
+
+1. Run: `ls -la e2e/tests/test_MAJESENS-*.spec.ts` (or the path to your test file)
+2. Run: `cat e2e/tests/test_MAJESENS-*.spec.ts | head -5` — verify the file has content
+3. Run: `ls -la outputs/test_automation_result.json`
+4. Run: `cat outputs/test_automation_result.json` — verify it has `{"status": "passed"}` or `{"status": "failed"}`
+
+If any file is MISSING or EMPTY, CREATE IT NOW before finishing. Do NOT report PASSED unless the test file exists on disk and contains actual test code.
+
+**The post-processing script will check for staged test files. If no test files exist on disk, the pipeline will fail.**
+
 ## ⚠️ CRITICAL: When the test FAILS — write a detailed bug report
 
 If the test fails, `outputs/bug_description.md` **must** contain enough detail for a developer to reproduce and fix the bug without running the test themselves. Generic descriptions like "the test failed" or "element not found" are NOT acceptable.
