@@ -26,6 +26,7 @@ const STATUSES = {
     MERGED: 'Merged',                               // PR merged and ticket complete
     IN_REWORK: 'In Rework',                         // PR review failed, focused fixes needed
     READY_FOR_TESTING: 'Ready For Testing',          // Test cases generated, ready for QA
+    PR_READY: 'PR Ready',                            // Tests passed, PR awaiting review
     FAILED: 'Failed',                                // Test automation passed review
     PASSED: 'Passed',                                // Test automation passed review
     IN_REVIEW_PASSED: 'In Review - Passed',          // Test ran and passed, awaiting code review
