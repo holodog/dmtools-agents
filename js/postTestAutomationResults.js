@@ -50,7 +50,6 @@ function readResultJson() {
 
 function performGitOperations(branchName, commitMessage) {
     try {
-    try {
         // Stage testing/ folder only (outputs/ is gitignored — test artifacts should not be committed)
         console.log('Staging testing/ folder...');
         try {
