@@ -53,43 +53,31 @@ function performGitOperations(branchName, commitMessage) {
         // Stage testing/ folder only (outputs/ is gitignored — test artifacts should not be committed)
         console.log('Staging testing/ folder...');
         try {
-            if (cli_execute_command({ command: 'test -d testing && echo yes' })) {
-                cli_execute_command({ command: 'git add testing/' });
-                console.log('Staged testing/ folder');
-            } else {
-                console.log('No testing/ folder exists (skipping)');
-            }
+            cli_execute_command({ command: 'git add testing/' });
+            console.log('Staged testing/ folder');
         } catch (e) {
             console.log('No testing/ folder to stage (continuing)');
         }
 
         // Stage frontend test files (Vitest unit tests)
         try {
-            if (cli_execute_command({ command: 'test -d src/test && echo yes' })) {
-                cli_execute_command({ command: 'git add src/test/' });
-                console.log('Staged Vitest test files from src/test/');
-            } else {
-                console.log('No src/test/ directory (skipping)');
-            }
+            cli_execute_command({ command: 'git add src/test/' });
+            console.log('Staged Vitest test files from src/test/');
         } catch (e) {
             console.log('No Vitest test files to stage (continuing)');
         }
 
         // Stage Playwright E2E test files
         try {
-            if (cli_execute_command({ command: 'test -d e2e/tests && echo yes' })) {
-                cli_execute_command({ command: 'git add e2e/tests/' });
-                console.log('Staged Playwright E2E test files from e2e/tests/');
-            } else {
-                console.log('No e2e/tests/ directory (skipping)');
-            }
+            cli_execute_command({ command: 'git add e2e/tests/' });
+            console.log('Staged Playwright E2E test files from e2e/tests/');
         } catch (e) {
             console.log('No Playwright E2E test files to stage (continuing)');
         }
 
         // Also stage any Go e2e test files in services/ directories
         try {
-            cli_execute_command({ command: 'git add services/*/e2e/*_test.go 2>/dev/null || true' });
+            cli_execute_command({ command: 'git add services/' });
             console.log('Staged e2e test files from services/');
         } catch (e) {
             console.log('No e2e test files in services/ to stage (continuing)');
