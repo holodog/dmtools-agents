@@ -183,7 +183,18 @@ await seedDatabase({
 
 ### Step 4 — Only then use `blocked_by_human`
 
-If a test **cannot run automatically** because required credentials or test data are not yet available in CI, output `"status": "blocked_by_human"` instead of `"passed"` or `"failed"`.
+If a test **cannot run automatically** because required credentials or test data are not yet available in CI, add a comment in the test file explaining what is needed and continue writing the rest of the test.
+
+---
+
+## IMPORTANT: Do Not Run Tests
+
+**You do NOT execute tests.** Your job is to write test code only. GitHub Actions CI will run the tests after the PR is created.
+
+- **Do NOT** run `npx playwright test`, `npm run test`, `vitest`, or any test command
+- **Do NOT** report pass/fail results in output files
+- **Do NOT** create `outputs/test_automation_result.json` or any result status file
+- Output files should describe **what test code was written**, not what the test outcome is
 
 ---
 
@@ -192,10 +203,10 @@ If a test **cannot run automatically** because required credentials or test data
 Always write output files:
 
 ### 1. `outputs/response.md`
-Jira-formatted summary of what was tested and the result.
+Jira-formatted summary of **what test code was written** — describe the test cases, their structure, and how they verify the feature. **Do NOT report pass/fail results** — CI will determine that.
 
 ### 2. `outputs/pr_body.md`
-GitHub PR body markdown — short description of what was automated.
+GitHub PR body markdown — describe what was automated (test cases, approach, files modified). **Do NOT include "Test Result: PASSED/FAILED"** — tests have not been run yet.
 
 ---
 

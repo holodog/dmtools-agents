@@ -20,7 +20,7 @@ The feature code is **already implemented** in the `main` branch and **deployed*
 4. **Write the actual test code** — a REAL test file with test functions and assertions, NOT just documentation:
    - **Go backend (ms_back)**: write `services/<service>/e2e/<feature>_e2e_test.go` with a proper `func TestMAJESENS_XXX(t *testing.T)` containing httptest requests and assertions. See `agents/instructions/test_automation/new_test_automation_instructions.md` for the Go httptest template.
    - **Playwright frontend (ms_front)**: write `e2e/tests/test_{ticket_key}.spec.ts` with actual Playwright test cases.
-5. Write output files.
+5. Write output files describing **what test code was written**. **Do NOT report pass/fail results** — tests have not been run yet. GitHub Actions CI will run them after the PR is created.
 
 You may write code in these locations:
 - **Frontend Playwright tests**: `e2e/tests/` and `e2e/fixtures/`
@@ -33,9 +33,11 @@ Do NOT write them inside `input/`, `input/TICKET-KEY/`, or any subfolder of `inp
 
 Run `mkdir -p outputs` first to ensure the directory exists.
 
-- `outputs/response.md` — test result summary in **Jira Markdown** (posted as Jira ticket comment)
-- `outputs/pr_body.md` — test result summary in **GitHub Markdown** (used as PR description)
+- `outputs/response.md` — test code summary in **Jira Markdown** (posted as Jira ticket comment). Describe what test cases were written, how they verify the feature, and which files were created/modified. **Do NOT report pass/fail results.**
+- `outputs/pr_body.md` — test code summary in **GitHub Markdown** (used as PR description). Describe the test cases, approach, and files modified. **Do NOT include "Test Result: PASSED/FAILED" or any fabricated test outcomes.**
 
 `response.md` and `pr_body.md` contain the same information but formatted differently — Jira MD vs GitHub MD.
+
+**Do NOT create** `outputs/test_automation_result.json` or any other result status file — tests have not been executed.
 
 Do NOT create branches or push. Do NOT modify any feature source code outside `e2e/` and `services/*/e2e/`.
