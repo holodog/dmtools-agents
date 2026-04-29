@@ -37,6 +37,33 @@ function getTargetRepo(ticket) {
         return 'ms_back';
     }
 
+    // For Test Cases without labels — inherit from linked Story/Bug
+    var issueType = (ticket && ticket.fields && ticket.fields.issuetype && ticket.fields.issuetype.name) || '';
+    if (issueType === 'Test Case' && ticket.fields && ticket.fields.issuelinks) {
+        for (var i = 0; i < ticket.fields.issuelinks.length; i++) {
+            var link = ticket.fields.issuelinks[i];
+            var linkedIssue = link.outwardIssue || link.inwardIssue;
+            if (linkedIssue && linkedIssue.key) {
+                var linkedType = (linkedIssue.fields && linkedIssue.fields.issuetype && linkedIssue.fields.issuetype.name) || '';
+                if (linkedType === 'Story' || linkedType === 'Bug') {
+                    try {
+                        var parentTicket = jira_get_ticket(linkedIssue.key);
+                        if (typeof parentTicket === 'string') parentTicket = JSON.parse(parentTicket);
+                        var parentLabels = (parentTicket.fields && parentTicket.fields.labels || []).map(function(l) { return l.toLowerCase(); });
+                        if (parentLabels.indexOf('frontend') !== -1 || parentLabels.indexOf('ui') !== -1 || parentLabels.indexOf('react') !== -1) {
+                            return 'ms_front';
+                        }
+                        if (parentLabels.indexOf('backend') !== -1 || parentLabels.indexOf('api') !== -1 || parentLabels.indexOf('go') !== -1) {
+                            return 'ms_back';
+                        }
+                    } catch (e) {
+                        console.warn('Could not fetch linked issue for repo detection:', e);
+                    }
+                }
+            }
+        }
+    }
+
     // Default to root repo
     return 'ms_root';
 }
