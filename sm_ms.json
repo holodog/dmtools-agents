@@ -159,7 +159,7 @@
         },
         {
           "description": "Backlog Test Cases → In Development + automate",
-          "jql": "project = MAJESENS AND issuetype in ('Test Case') AND status in ('Backlog') AND labels not in ('new_sm_test_automation_triggered')",
+          "jql": "project = MAJESENS AND issuetype in ('Test Case') AND status in ('Backlog')",
           "targetStatus": "In Development",
           "configFile": "agents/test_case_automation.json",
           "skipIfLabel": "sm_test_automation_triggered",
@@ -167,15 +167,7 @@
           "addLabel": "sm_test_automation_triggered"
         },
         {
-          "description": "[NEW] Backlog Test Cases → In Development + automate (CI-based)",
-          "jql": "project = MAJESENS AND issuetype in ('Test Case') AND status in ('Backlog') AND labels = 'new_sm_test_automation_triggered'",
-          "targetStatus": "In Development",
-          "configFile": "agents/new_test_case_automation.json",
-          "workflowRef": "master",
-          "addLabel": "new_sm_test_automation_triggered"
-        },
-        {
-          "description": "[NEW] CI Pending Test Cases → check PR CI status",
+          "description": "CI Pending Test Cases → check PR CI status",
           "jql": "project = MAJESENS AND issuetype in ('Test Case') AND status in ('CI Pending')",
           "configFile": "agents/new_test_ci_check.json",
           "skipIfLabel": "new_sm_ci_check_triggered",
@@ -183,15 +175,6 @@
           "workflowRef": "master",
           "enabled": true,
           "localExecution": true
-        },
-        {
-          "description": "[NEW] In Rework Test Cases (CI retry) → fix and push",
-          "jql": "project = MAJESENS AND issuetype in ('Test Case') AND status in ('In Rework') AND labels = 'new_ci_retry'",
-          "configFile": "agents/new_test_ci_rework.json",
-          "skipIfLabel": "new_sm_ci_rework_triggered",
-          "addLabel": "new_sm_ci_rework_triggered",
-          "workflowRef": "master",
-          "enabled": true
         },
         {
           "description": "In Review Test Cases → trigger pr_test_automation_review",
