@@ -195,7 +195,7 @@
         },
         {
           "description": "In Review Test Cases → trigger pr_test_automation_review",
-          "jql": "project = MAJESENS AND issuetype in ('Test Case') AND status in ('In Review - Passed', 'In Review - Failed') AND labels NOT IN ('pr_approved')",
+          "jql": "project = MAJESENS AND issuetype in ('Test Case') AND status in ('In Review - Passed', 'In Review - Failed') AND labels NOT IN ('pr_approved', 'ai_test_automation')",
           "configFile": "agents/pr_test_automation_review.json",
           "skipIfLabel": "sm_test_review_triggered",
           "workflowRef": "master",
