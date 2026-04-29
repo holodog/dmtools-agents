@@ -232,13 +232,20 @@ function action(params) {
         }
 
         if (ciStatus.failed === 0 && ciStatus.passed > 0) {
-            // All passed — add pr_approved label, SM Agent will merge
+            // All passed — add pr_approved label, move to In Review - Passed → SM Agent will merge
             console.log('All CI checks passed — approving');
             try {
                 jira_add_label({ key: ticketKey, label: LABELS.PR_APPROVED });
                 console.log('✅ Added pr_approved label');
             } catch (e) {
                 console.warn('Failed to add pr_approved label:', e);
+            }
+
+            try {
+                jira_move_to_status({ key: ticketKey, statusName: STATUSES.IN_REVIEW_PASSED });
+                console.log('✅ Moved to In Review - Passed');
+            } catch (e) {
+                console.warn('Failed to move to In Review - Passed:', e);
             }
 
             jira_post_comment({
