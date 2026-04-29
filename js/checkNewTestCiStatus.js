@@ -7,7 +7,7 @@
  * 3. Handle outcomes:
  *    - Still pending/in_progress → skip (check next SM Agent cycle)
  *    - All passed → add pr_approved label → SM Agent merges via retry_merge_test
- *    - Failed → write ci_failures.md → add new_ci_retry label → move to In Rework
+ *    - Failed → write ci_failures.md → move to In Rework
  * 4. Remove ci_check_triggered label
  * 5. Post Jira comment with CI result
  */
@@ -321,14 +321,7 @@ function action(params) {
                     '*Pull Request*: ' + prDetails.html_url
             });
 
-            // Add retry label and move to In Rework
-            try {
-                jira_add_label({ key: ticketKey, label: LABELS.NEW_CI_RETRY });
-                console.log('✅ Added new_ci_retry label');
-            } catch (e) {
-                console.warn('Failed to add new_ci_retry label:', e);
-            }
-
+            // Move to In Rework — old rework rule picks it up via status-only JQL
             try {
                 jira_move_to_status({ key: ticketKey, statusName: STATUSES.IN_REWORK });
                 console.log('✅ Moved to In Rework');

@@ -61,7 +61,7 @@ const LABELS = {
     NEEDS_CORE_IMPLEMENTATION: 'needs_core_implementation',
     AI_TEST_AUTOMATION: 'ai_test_automation',
     PR_APPROVED: 'pr_approved',              // Added to PR and ticket when AI approves, removed after merge attempt
-    // New CI-based test automation flow (parallel with existing, labeled with new_ prefix)
+    // Test automation flow labels
     NEW_SM_TEST_AUTOMATION: 'new_sm_test_automation_triggered',
     NEW_SM_CI_CHECK: 'new_sm_ci_check_triggered',
     NEW_SM_CI_REWORK: 'new_sm_ci_rework_triggered',
