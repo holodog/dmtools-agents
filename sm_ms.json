@@ -171,7 +171,6 @@
           "jql": "project = MAJESENS AND issuetype in ('Test Case') AND status in ('Backlog') AND labels = 'new_sm_test_automation_triggered'",
           "targetStatus": "In Development",
           "configFile": "agents/new_test_case_automation.json",
-          "skipIfLabel": "new_sm_test_automation_triggered",
           "workflowRef": "master",
           "addLabel": "new_sm_test_automation_triggered"
         },
