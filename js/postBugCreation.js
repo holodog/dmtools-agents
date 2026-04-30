@@ -145,8 +145,8 @@ function action(params) {
 
             try { jira_post_comment({ key: ticketKey, comment: comment }); } catch (e) {}
             try {
-                jira_move_to_status({ key: ticketKey, statusName: STATUSES.PASSED });
-                console.log('✅ Tests pass — moved', ticketKey, 'to', STATUSES.PASSED);
+                jira_move_to_status({ key: ticketKey, statusName: STATUSES.DONE });
+                console.log('✅ Tests pass — moved', ticketKey, 'to', STATUSES.DONE);
             } catch (e) {
                 console.warn('Failed to move to Passed:', e);
             }

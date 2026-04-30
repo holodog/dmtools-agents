@@ -251,22 +251,13 @@ function action(params) {
             console.log('✅ Removed SM label: sm_test_review_triggered');
         } catch (e) {}
 
-        var finalStatus;
-        if (isApproved && !mergeSucceeded) {
-            finalStatus = STATUSES.IN_REWORK;
-        } else if (isApproved) {
-            finalStatus = (currentStatus === STATUSES.IN_REVIEW_PASSED) ? STATUSES.PASSED : STATUSES.FAILED;
-        } else {
-            finalStatus = STATUSES.IN_REWORK;
-        }
         console.log('✅ Test review workflow complete:', isApproved ? (mergeSucceeded ? 'APPROVED' : 'MERGE CONFLICT') : 'CHANGES REQUESTED');
 
         return {
             success: true,
             recommendation: reviewData.recommendation,
             ticketKey: ticketKey,
-            mergeSucceeded: mergeSucceeded,
-            finalStatus: finalStatus
+            mergeSucceeded: mergeSucceeded
         };
 
     } catch (error) {

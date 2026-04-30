@@ -237,11 +237,8 @@ function action(params) {
         // the review-trigger rule (JQL: NOT IN pr_approved) naturally skips the ticket.
         const isTestCase = params.jobParams && params.jobParams.customParams && params.jobParams.customParams.testCaseMerge;
         if (isTestCase) {
-            var ticketDetail = jira_get_ticket({ key: ticketKey });
-            var currentStatus = ticketDetail && ticketDetail.fields && ticketDetail.fields.status && ticketDetail.fields.status.name;
-            var finalStatus = (currentStatus === STATUSES.IN_REVIEW_PASSED) ? STATUSES.PASSED : STATUSES.FAILED;
-            jira_move_to_status({ key: ticketKey, statusName: finalStatus });
-            console.log('✅ Ticket moved to ' + finalStatus);
+            jira_move_to_status({ key: ticketKey, statusName: STATUSES.DONE });
+            console.log('✅ Test Case moved to Done');
         } else {
             jira_move_to_status({ key: ticketKey, statusName: STATUSES.MERGED });
             console.log('✅ Ticket moved to Merged');
