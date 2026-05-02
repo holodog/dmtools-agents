@@ -256,7 +256,9 @@ function processRule(rule, repoInfo, ruleIndex) {
 
         if (triggered) {
             if (rule.addLabel) try { jira_add_label({ key: key, label: rule.addLabel }); } catch (e) {}
-            runSummary.push({ rule: ruleLabel, ticket: key, action: '🚀 Dispatched', status: ticket.fields.status.name, updated: stale });
+            var runLink = 'https://github.com/' + targetRepo.owner + '/' + targetRepo.repo + '/actions?query=' + key;
+            var actionStr = '[🚀 Dispatched](' + runLink + ')';
+            runSummary.push({ rule: ruleLabel, ticket: key, action: actionStr, status: ticket.fields.status.name, updated: stale });
             pCount++;
         }
     });
@@ -272,11 +274,17 @@ function action(params) {
     if (!rules || rules.length === 0) return { success: false, error: 'No rules' };
 
     var repoInfo = { owner: p.owner, repo: p.repo };
+    var ciRunUrl = p.ciRunUrl || null;
+    
     console.log('SM Agent — ' + repoInfo.owner + '/' + repoInfo.repo);
 
     rules.forEach(function(rule, i) { processRule(rule, repoInfo, i); });
 
     var md = '# SM Agent Run Summary\n\n';
+    if (ciRunUrl) {
+        md += '[View GitHub Action Run](' + ciRunUrl + ')\n\n';
+    }
+    
     if (runSummary.length === 0) {
         md += 'No tickets found in this run.\n';
     } else {
@@ -284,7 +292,14 @@ function action(params) {
         md += '| :--- | :--- | :--- | :--- | :--- |\n';
         runSummary.forEach(function(r) {
             var ticketLink = '[' + r.ticket + '](https://majesens.atlassian.net/browse/' + r.ticket + ')';
-            md += '| ' + r.rule + ' | ' + ticketLink + ' | ' + r.action + ' | ' + r.status + ' | ' + r.updated + ' |\n';
+            
+            // If action is local and we have ciRunUrl, link it
+            var actionStr = r.action;
+            if (ciRunUrl && actionStr.indexOf('✅ Done') === 0) {
+                actionStr = '[' + actionStr + '](' + ciRunUrl + ')';
+            }
+            
+            md += '| ' + r.rule + ' | ' + ticketLink + ' | ' + actionStr + ' | ' + r.status + ' | ' + r.updated + ' |\n';
         });
     }
     
