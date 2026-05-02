@@ -193,7 +193,7 @@ function processRuleLocally(rule, ruleIndex) {
         if (rule.targetStatus) moveStatus(key, rule.targetStatus);
 
         try {
-            var fullTicket = JSON.parse(jira_get_ticket(key));
+            var rawTicket = jira_get_ticket(key); var fullTicket = (typeof rawTicket === "string") ? JSON.parse(rawTicket) : rawTicket;
             console.log('  ▶️  ' + key + ' → ' + postJSActionPath);
             var result = runLocalAction(postJSActionPath, fullTicket, agentParams);
             var actStr = '✅ Done (' + (result && result.action || 'ok') + ')';
