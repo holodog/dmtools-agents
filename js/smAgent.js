@@ -283,7 +283,8 @@ function action(params) {
         md += '| Rule | Ticket | Action | Status | Updated |\n';
         md += '| :--- | :--- | :--- | :--- | :--- |\n';
         runSummary.forEach(function(r) {
-            md += '| ' + r.rule + ' | ' + r.ticket + ' | ' + r.action + ' | ' + r.status + ' | ' + r.updated + ' |\n';
+            var ticketLink = '[' + r.ticket + '](https://majesens.atlassian.net/browse/' + r.ticket + ')';
+            md += '| ' + r.rule + ' | ' + ticketLink + ' | ' + r.action + ' | ' + r.status + ' | ' + r.updated + ' |\n';
         });
     }
     
