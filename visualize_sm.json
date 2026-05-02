@@ -1,0 +1,7 @@
+{
+  "name": "JSRunner",
+  "params": {
+    "jsPath": "agents/js/visualizeSM.js",
+    "jobParams": {}
+  }
+}
