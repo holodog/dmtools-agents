@@ -1,0 +1,9 @@
+{
+  "name": "JSRunner",
+  "params": {
+    "jsPath": "agents/js/smHealthMonitor.js",
+    "jobParams": {
+      "ticketContextDepth": 0
+    }
+  }
+}
