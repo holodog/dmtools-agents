@@ -1,85 +1,57 @@
 /**
  * SM Agent — Scrum Master automation (JSRunner)
  *
- * Reads an array of rules from params.rules (defined in agents/sm.json)
- * and for each rule:
- *   1. Queries Jira by rule.jql
- *   2. Optionally transitions each ticket to rule.targetStatus
- *   3. Triggers an ai-teammate GitHub Actions workflow for each ticket
- *      OR executes the postJSAction locally (if localExecution: true)
- *
- * Rule fields:
- *   jql            (required) — JQL to find tickets
- *   configFile     (required) — agents/*.json to pass as config_file workflow input
- *   description    (optional) — human-readable label shown in logs
- *   targetStatus   (optional) — Jira status to transition tickets to before triggering
- *   workflowFile   (optional) — GitHub Actions workflow file  (default: ai-teammate.yml)
- *   workflowRef    (optional) — git ref for dispatch           (default: main)
- *   skipIfLabel    (optional) — skip ticket if it already has this label (idempotency)
- *   addLabel       (optional) — add this label after triggering (idempotency marker)
- *   enabled        (optional) — set to false to disable the rule entirely (default: true)
- *   limit          (optional) — max number of tickets to process per run (default: 50)
- *   localExecution (optional) — if true, run postJSAction directly (no runner, no AI/CLI)
- *   targetRepo     (optional) — 'backend', 'frontend', or 'root' (default: 'root')
+ * Rule engine for Jira ticket movement.
+ * Track run stats and generate Markdown summary.
  */
+
+// ─── Global State ────────────────────────────────────────────────────────────
+var runSummary = [];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/**
- * Determine target repository based on ticket labels
- * @param {Object} ticket - Jira ticket object
- * @param {string} defaultTarget - Default repo if no label found ('root', 'backend', 'frontend')
- * @returns {Object} { owner: 'holodog', repo: 'ms_root'|'ms_back'|'ms_front', ref: 'master'|'main' }
- */
+function getStalenessInfo(ticket) {
+    var updatedStr = ticket.fields.updated;
+    if (!updatedStr) return '';
+    var updatedDate = new Date(updatedStr);
+    var now = new Date();
+    var diffMs = now.getTime() - updatedDate.getTime();
+    var diffHours = diffMs / (1000 * 60 * 60);
+    var label = diffHours.toFixed(1) + 'h';
+    if (diffHours >= 12) return '⚠️ **STALE (' + label + ')**';
+    return label;
+}
+
 function getTargetRepo(ticket, defaultTarget) {
     var labels = (ticket.fields && ticket.fields.labels) ? ticket.fields.labels : [];
     var target = defaultTarget || 'root';
 
-    // Check for repo-specific labels
     if (labels.indexOf('frontend') !== -1 || labels.indexOf('ui') !== -1 || labels.indexOf('react') !== -1) {
         target = 'frontend';
     } else if (labels.indexOf('backend') !== -1 || labels.indexOf('api') !== -1 || labels.indexOf('go') !== -1) {
         target = 'backend';
     }
 
-    // If no repo-specific labels found and this is a Test Case, try to inherit from linked story
-    // Test cases are generated from stories but may not inherit the frontend/backend labels
     if (target === 'root') {
         var issueType = (ticket.fields && ticket.fields.issuetype && ticket.fields.issuetype.name) || '';
         if (issueType === 'Test Case') {
-            // Check issue links for related story/parent
             if (ticket.fields && ticket.fields.issuelinks) {
                 for (var i = 0; i < ticket.fields.issuelinks.length; i++) {
                     var link = ticket.fields.issuelinks[i];
-                    // Look for outward link (this test case links TO another issue)
                     var linkedIssue = link.outwardIssue || link.inwardIssue;
                     if (linkedIssue && linkedIssue.key) {
-                        // Check if linked issue is a Story (not another Test Case)
                         var linkedType = (linkedIssue.fields && linkedIssue.fields.issuetype && linkedIssue.fields.issuetype.name) || '';
                         if (linkedType === 'Story' || linkedType === 'Bug') {
-                            // Fetch full parent ticket to get labels (search API returns truncated data)
                             try {
                                 var parentTicket = jira_get_ticket(linkedIssue.key);
-                                if (typeof parentTicket === 'string') {
-                                    parentTicket = JSON.parse(parentTicket);
-                                }
+                                if (typeof parentTicket === 'string') parentTicket = JSON.parse(parentTicket);
                                 var parentLabels = (parentTicket.fields && parentTicket.fields.labels) || [];
-
-                                // Check parent labels for repo indicators
-                                if (parentLabels.indexOf('frontend') !== -1 ||
-                                    parentLabels.indexOf('ui') !== -1 ||
-                                    parentLabels.indexOf('react') !== -1) {
-                                    target = 'frontend';
-                                    break;
-                                } else if (parentLabels.indexOf('backend') !== -1 ||
-                                           parentLabels.indexOf('api') !== -1 ||
-                                           parentLabels.indexOf('go') !== -1) {
-                                    target = 'backend';
-                                    break;
+                                if (parentLabels.indexOf('frontend') !== -1 || parentLabels.indexOf('ui') !== -1 || parentLabels.indexOf('react') !== -1) {
+                                    target = 'frontend'; break;
+                                } else if (parentLabels.indexOf('backend') !== -1 || parentLabels.indexOf('api') !== -1 || parentLabels.indexOf('go') !== -1) {
+                                    target = 'backend'; break;
                                 }
-                            } catch (e) {
-                                console.warn('  ⚠️  Could not fetch parent ticket ' + linkedIssue.key + ': ' + (e.message || e));
-                            }
+                            } catch (e) { console.warn('  ⚠️ parent error ' + linkedIssue.key); }
                         }
                     }
                 }
@@ -87,42 +59,24 @@ function getTargetRepo(ticket, defaultTarget) {
         }
     }
 
-    // Map target to actual repo info
-    if (target === 'frontend') {
-        return { owner: 'holodog', repo: 'ms_front', ref: 'main' };
-    } else if (target === 'backend') {
-        return { owner: 'holodog', repo: 'ms_back', ref: 'main' };
-    }
-    // Default to root
+    if (target === 'frontend') return { owner: 'holodog', repo: 'ms_front', ref: 'main' };
+    if (target === 'backend')  return { owner: 'holodog', repo: 'ms_back',  ref: 'main' };
     return { owner: 'holodog', repo: 'ms_root', ref: 'master' };
 }
 
 function buildEncodedConfig(ticketKey, initiatorId, baseBranch) {
-    var p = {
-        inputJql: 'key = ' + ticketKey
-    };
-    if (initiatorId) {
-        p.initiator = initiatorId;
-    }
-    // Pass base branch for JavaScript scripts to use (avoids GraalVM env var issues)
-    if (baseBranch) {
-        p.base_branch = baseBranch;
-    } else if (typeof DEFAULT_BASE_BRANCH !== 'undefined') {
-        p.base_branch = DEFAULT_BASE_BRANCH;
-    }
+    var p = { inputJql: 'key = ' + ticketKey };
+    if (initiatorId) p.initiator = initiatorId;
+    if (baseBranch) p.base_branch = baseBranch;
+    else if (typeof DEFAULT_BASE_BRANCH !== 'undefined') p.base_branch = DEFAULT_BASE_BRANCH;
     return encodeURIComponent(JSON.stringify({ params: p }));
 }
 
 function triggerWorkflow(repoInfo, ticketKey, rule) {
     var workflowFile = rule.workflowFile || 'ai-teammate.yml';
-    // Use repo-specific ref if provided, otherwise use rule's workflowRef or default
     var workflowRef = rule.workflowRef || repoInfo.ref || 'main';
-
-    // Get initiator from environment variable (set in GitHub Actions)
     var initiatorId = null;
-    try {
-        initiatorId = JIRA_INITIATOR_ACCOUNT_ID || null;
-    } catch (e) {}
+    try { initiatorId = JIRA_INITIATOR_ACCOUNT_ID || null; } catch (e) {}
 
     try {
         github_trigger_workflow(
@@ -139,7 +93,7 @@ function triggerWorkflow(repoInfo, ticketKey, rule) {
         console.log('  ✅ Triggered ' + workflowFile + '@' + workflowRef + ' for ' + ticketKey);
         return true;
     } catch (e) {
-        console.warn('  ⚠️  Workflow trigger failed for ' + ticketKey + ': ' + (e.message || e));
+        console.warn('  ⚠️ Workflow fail ' + ticketKey + ': ' + (e.message || e));
         return false;
     }
 }
@@ -149,7 +103,7 @@ function moveStatus(ticketKey, targetStatus) {
         jira_move_to_status({ key: ticketKey, statusName: targetStatus });
         console.log('  ✅ ' + ticketKey + ' → ' + targetStatus);
     } catch (e) {
-        console.warn('  ⚠️  Status transition failed for ' + ticketKey + ': ' + (e.message || e));
+        console.warn('  ⚠️ Move fail ' + ticketKey + ': ' + (e.message || e));
     }
 }
 
@@ -161,23 +115,11 @@ function hasLabel(ticket, label) {
 
 // ─── Local execution ──────────────────────────────────────────────────────────
 
-/**
- * Loads a postJSAction JS file and executes its action() function in-process.
- * Uses a module wrapper so that require('./config.js') works inside the loaded file.
- *
- * @param {string} jsPath  - path to the JS file (e.g. "agents/js/checkBugTestsPassed.js")
- * @param {Object} ticket  - full Jira ticket object (from jira_get_ticket)
- * @param {Object} agentParams - params block from the agent config JSON
- * @returns result of action()
- */
 function runLocalAction(jsPath, ticket, agentParams) {
     var actionCode = file_read({ path: jsPath });
-    if (!actionCode || !actionCode.trim()) throw new Error('Cannot read: ' + jsPath);
-
+    if (!actionCode || !actionCode.trim()) throw new Error('No JS: ' + jsPath);
     var configCode = file_read({ path: 'agents/js/config.js' });
-    if (!configCode || !configCode.trim()) throw new Error('Cannot read: agents/js/config.js');
 
-    // Wrap both files as CommonJS modules so require('./config.js') works inside action file
     var script =
         '(function() {\n' +
         '  var _cm = { exports: {} };\n' +
@@ -191,235 +133,185 @@ function runLocalAction(jsPath, ticket, agentParams) {
         '})()';
 
     var exported = eval(script);
-    if (!exported || typeof exported.action !== 'function') {
-        throw new Error('No action() exported from: ' + jsPath);
-    }
+    if (!exported || typeof exported.action !== 'function') throw new Error('No action() in: ' + jsPath);
     return exported.action({ ticket: ticket, jobParams: agentParams });
 }
 
-/**
- * Processes a rule with localExecution: true.
- * For each matching ticket: fetches full ticket, runs postJSAction in-process.
- */
 function processRuleLocally(rule, ruleIndex) {
-    var label = rule.description || ('Rule #' + (ruleIndex + 1));
-    console.log('\n══ [LOCAL] ' + label + ' ══');
-    console.log('   JQL: ' + rule.jql + (rule.limit ? ' (limit: ' + rule.limit + ')' : ''));
+    var ruleLabel = rule.description || ('Rule #' + (ruleIndex + 1));
+    console.log('\n══ [LOCAL] ' + ruleLabel + ' ══');
 
     if (rule.enabled === false) {
-        console.log('  ⏸️  Rule disabled — skipping');
-        return { processedKeys: [], skippedKeys: [] };
+        console.log('  ⏸️  Disabled');
+        return { processed: 0, skipped: 0 };
     }
 
-    if (!rule.jql || !rule.configFile) {
-        console.warn('  ⚠️  Skipping rule — jql and configFile are required');
-        return { processedKeys: [], skippedKeys: [] };
-    }
-
-    // Read agent config to get postJSAction path and params (customParams, metadata, etc.)
     var agentConfig;
     try {
-        var raw = file_read({ path: rule.configFile });
-        agentConfig = JSON.parse(raw);
+        agentConfig = JSON.parse(file_read({ path: rule.configFile }));
     } catch (e) {
-        console.error('  ❌ Cannot read/parse configFile: ' + rule.configFile + ' — ' + e);
-        return { processedKeys: [], skippedKeys: [] };
+        console.error('  ❌ Config error: ' + rule.configFile);
+        return { processed: 0, skipped: 0 };
     }
 
     var agentParams = agentConfig.params || {};
-
-    // Add initiator from environment variable for local execution
-    try {
-        if (JIRA_INITIATOR_ACCOUNT_ID) {
-            agentParams.initiator = JIRA_INITIATOR_ACCOUNT_ID;
-        }
-    } catch (e) {}
+    try { if (JIRA_INITIATOR_ACCOUNT_ID) agentParams.initiator = JIRA_INITIATOR_ACCOUNT_ID; } catch (e) {}
 
     var postJSActionPath = agentParams.postJSAction;
-
     if (!postJSActionPath) {
-        console.warn('  ⚠️  No postJSAction in ' + rule.configFile + ' — cannot run locally');
-        return { processedKeys: [], skippedKeys: [] };
+        console.warn('  ⚠️ No postJS in ' + rule.configFile);
+        return { processed: 0, skipped: 0 };
     }
 
     var tickets = [];
     try {
-        tickets = jira_search_by_jql({ jql: rule.jql, fields: ['key', 'labels', 'issuetype', 'issuelinks'] }) || [];
+        tickets = jira_search_by_jql({ jql: rule.jql, fields: ['key', 'labels', 'issuetype', 'issuelinks', 'status', 'updated'] }) || [];
     } catch (e) {
-        console.error('  ❌ Jira query failed: ' + (e.message || e));
-        return { processedKeys: [], skippedKeys: [] };
+        console.error('  ❌ JQL fail: ' + e.message);
+        return { processed: 0, skipped: 0 };
     }
 
-    if (typeof rule.limit === 'number' && tickets.length > rule.limit) {
-        console.log('  Limiting from ' + tickets.length + ' to ' + rule.limit + ' ticket(s)');
-        tickets = tickets.slice(0, rule.limit);
-    }
+    if (typeof rule.limit === 'number' && tickets.length > rule.limit) tickets = tickets.slice(0, rule.limit);
+    if (tickets.length === 0) return { processed: 0, skipped: 0 };
 
-    if (tickets.length === 0) {
-        console.log('  No tickets found.');
-        return { processedKeys: [], skippedKeys: [] };
-    }
+    console.log('  Found ' + tickets.length + ' ticket(s)');
 
-    console.log('  Found ' + tickets.length + ' ticket(s) — running locally via ' + postJSActionPath);
-
-    var processedKeys = [];
-    var skippedKeys = [];
+    var pCount = 0;
+    var sCount = 0;
 
     tickets.forEach(function(ticket) {
         var key = ticket.key;
+        var stale = getStalenessInfo(ticket);
 
         if (rule.skipIfLabel && hasLabel(ticket, rule.skipIfLabel)) {
-            console.log('  ⏭️  ' + key + ' skipped (label: ' + rule.skipIfLabel + ')');
-            skippedKeys.push(key);
+            console.log('  ⏭️  ' + key + ' skipped');
+            runSummary.push({ rule: ruleLabel, ticket: key, action: '⏭️ Skipped', status: ticket.fields.status.name, updated: stale });
+            sCount++;
             return;
         }
 
-        if (rule.targetStatus) {
-            moveStatus(key, rule.targetStatus);
-        }
-
-        // Fetch full ticket so action() has all fields available
-        var fullTicket;
-        try {
-            var ticketRaw = jira_get_ticket(key);
-            fullTicket = (typeof ticketRaw === 'string') ? JSON.parse(ticketRaw) : ticketRaw;
-            if (!fullTicket || !fullTicket.key) throw new Error('Empty ticket returned');
-        } catch (e) {
-            console.error('  ❌ Failed to fetch ticket ' + key + ': ' + e);
-            return;
-        }
+        if (rule.targetStatus) moveStatus(key, rule.targetStatus);
 
         try {
+            var fullTicket = JSON.parse(jira_get_ticket(key));
             console.log('  ▶️  ' + key + ' → ' + postJSActionPath);
             var result = runLocalAction(postJSActionPath, fullTicket, agentParams);
-            console.log('  ✅ ' + key + ' done — action: ' + (result && result.action || JSON.stringify(result).substring(0, 80)));
-            processedKeys.push(key);
-
-            if (rule.addLabel) {
-                try { jira_add_label({ key: key, label: rule.addLabel }); } catch (e) {}
-            }
+            var actStr = '✅ Done (' + (result && result.action || 'ok') + ')';
+            console.log('  ' + actStr);
+            runSummary.push({ rule: ruleLabel, ticket: key, action: actStr, status: fullTicket.fields.status.name, updated: stale });
+            pCount++;
+            if (rule.addLabel) try { jira_add_label({ key: key, label: rule.addLabel }); } catch (e) {}
         } catch (e) {
-            console.error('  ❌ Local execution failed for ' + key + ': ' + (e.message || e));
+            console.error('  ❌ Fail ' + key + ': ' + e.message);
+            runSummary.push({ rule: ruleLabel, ticket: key, action: '❌ Error', status: 'Error', updated: stale });
         }
     });
 
-    return { processedKeys: processedKeys, skippedKeys: skippedKeys };
+    return { processed: pCount, skipped: sCount };
 }
 
 // ─── Rule processor ───────────────────────────────────────────────────────────
 
 function processRule(rule, repoInfo, ruleIndex) {
-    if (rule.localExecution) {
-        return processRuleLocally(rule, ruleIndex);
-    }
+    if (rule.localExecution) return processRuleLocally(rule, ruleIndex);
 
-    var label = rule.description || ('Rule #' + (ruleIndex + 1));
-    console.log('\n══ ' + label + ' ══');
-    console.log('   JQL: ' + rule.jql + (rule.limit ? ' (limit: ' + rule.limit + ')' : ''));
+    var ruleLabel = rule.description || ('Rule #' + (ruleIndex + 1));
+    console.log('\n══ ' + ruleLabel + ' ══');
 
     if (rule.enabled === false) {
-        console.log('  ⏸️  Rule disabled — skipping');
-        return { processedKeys: [], skippedKeys: [] };
-    }
-
-    if (!rule.jql || !rule.configFile) {
-        console.warn('  ⚠️  Skipping rule — jql and configFile are required');
-        return { processedKeys: [], skippedKeys: [] };
+        console.log('  ⏸️  Disabled');
+        return { processed: 0, skipped: 0 };
     }
 
     var tickets = [];
     try {
-        tickets = jira_search_by_jql({ jql: rule.jql, fields: ['key', 'labels', 'issuetype', 'issuelinks'] }) || [];
+        tickets = jira_search_by_jql({ jql: rule.jql, fields: ['key', 'labels', 'issuetype', 'issuelinks', 'status', 'updated'] }) || [];
     } catch (e) {
-        console.error('  ❌ Jira query failed: ' + (e.message || e));
-        return { processedKeys: [], skippedKeys: [] };
+        console.error('  ❌ JQL fail: ' + e.message);
+        return { processed: 0, skipped: 0 };
     }
 
-    // Enforce limit client-side
-    if (typeof rule.limit === 'number' && tickets.length > rule.limit) {
-        console.log('  Limiting from ' + tickets.length + ' to ' + rule.limit + ' ticket(s)');
-        tickets = tickets.slice(0, rule.limit);
-    }
-
-    if (tickets.length === 0) {
-        console.log('  No tickets found.');
-        return { processedKeys: [], skippedKeys: [] };
-    }
+    if (typeof rule.limit === 'number' && tickets.length > rule.limit) tickets = tickets.slice(0, rule.limit);
+    if (tickets.length === 0) return { processed: 0, skipped: 0 };
 
     console.log('  Found ' + tickets.length + ' ticket(s)');
 
-    var processedKeys = [];
-    var skippedKeys   = [];
+    var pCount = 0;
+    var sCount = 0;
 
     tickets.forEach(function(ticket) {
         var key = ticket.key;
+        var stale = getStalenessInfo(ticket);
 
         if (rule.skipIfLabel && hasLabel(ticket, rule.skipIfLabel)) {
-            console.log('  ⏭️  ' + key + ' skipped (label: ' + rule.skipIfLabel + ')');
-            skippedKeys.push(key);
+            console.log('  ⏭️  ' + key + ' skipped');
+            runSummary.push({ rule: ruleLabel, ticket: key, action: '⏭️ Skipped', status: ticket.fields.status.name, updated: stale });
+            sCount++;
             return;
         }
 
-        if (rule.targetStatus) {
-            moveStatus(key, rule.targetStatus);
-        }
-
-        // Determine target repo based on ticket labels (supports multi-repo routing)
+        if (rule.targetStatus) moveStatus(key, rule.targetStatus);
         var targetRepo = getTargetRepo(ticket, rule.targetRepo || 'root');
-        console.log('  📍 ' + key + ' → ' + targetRepo.owner + '/' + targetRepo.repo + '@' + targetRepo.ref);
-
         var triggered = triggerWorkflow(targetRepo, key, rule);
 
-        if (triggered && rule.addLabel) {
-            try { jira_add_label({ key: key, label: rule.addLabel }); } catch (e) {}
+        if (triggered) {
+            if (rule.addLabel) try { jira_add_label({ key: key, label: rule.addLabel }); } catch (e) {}
+            var runLink = 'https://github.com/' + targetRepo.owner + '/' + targetRepo.repo + '/actions?query=' + key;
+            var actionStr = '[🚀 Dispatched](' + runLink + ')';
+            runSummary.push({ rule: ruleLabel, ticket: key, action: actionStr, status: ticket.fields.status.name, updated: stale });
+            pCount++;
         }
-
-        if (triggered) processedKeys.push(key);
     });
 
-    return { processedKeys: processedKeys, skippedKeys: skippedKeys };
+    return { processed: pCount, skipped: sCount };
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 function action(params) {
-    var p     = params.jobParams || params;
+    var p = params.jobParams || params;
     var rules = p.rules;
-
-    if (!rules || rules.length === 0) {
-        console.error('❌ No rules defined in jobParams.rules');
-        return { success: false, error: 'No rules defined' };
-    }
-
-    if (!p.owner || !p.repo) {
-        console.error('❌ jobParams.owner and jobParams.repo are required');
-        return { success: false, error: 'Missing owner or repo' };
-    }
+    if (!rules || rules.length === 0) return { success: false, error: 'No rules' };
 
     var repoInfo = { owner: p.owner, repo: p.repo };
-    console.log('SM Agent — ' + repoInfo.owner + '/' + repoInfo.repo + ' (' + rules.length + ' rules)');
+    var ciRunUrl = p.ciRunUrl || null;
+    
+    console.log('SM Agent — ' + repoInfo.owner + '/' + repoInfo.repo);
 
-    var allProcessedKeys = [];
-    var allSkippedKeys   = [];
+    rules.forEach(function(rule, i) { processRule(rule, repoInfo, i); });
 
-    rules.forEach(function(rule, i) {
-        var result = processRule(rule, repoInfo, i);
-        allProcessedKeys = allProcessedKeys.concat(result.processedKeys);
-        allSkippedKeys   = allSkippedKeys.concat(result.skippedKeys);
-    });
+    var md = '# SM Agent Run Summary\n\n';
+    if (ciRunUrl) {
+        md += '[View GitHub Action Run](' + ciRunUrl + ')\n\n';
+    }
+    
+    if (runSummary.length === 0) {
+        md += 'No tickets found in this run.\n';
+    } else {
+        md += '| Rule | Ticket | Action | Status | Updated |\n';
+        md += '| :--- | :--- | :--- | :--- | :--- |\n';
+        runSummary.forEach(function(r) {
+            var ticketLink = '[' + r.ticket + '](https://majesens.atlassian.net/browse/' + r.ticket + ')';
+            
+            // If action is local and we have ciRunUrl, link it
+            var actionStr = r.action;
+            if (ciRunUrl && actionStr.indexOf('✅ Done') === 0) {
+                actionStr = '[' + actionStr + '](' + ciRunUrl + ')';
+            }
+            
+            md += '| ' + r.rule + ' | ' + ticketLink + ' | ' + actionStr + ' | ' + r.status + ' | ' + r.updated + ' |\n';
+        });
+    }
+    
+    try {
+        file_write({ path: 'agents/outputs/sm_summary.md', content: md });
+        console.log('\nSummary written to agents/outputs/sm_summary.md');
+    } catch (e) {
+        console.warn('Failed summary file:', e);
+    }
 
-    console.log('\n══ SM Agent complete — processed: ' + allProcessedKeys.length + ' ' +
-        (allProcessedKeys.length ? '[' + allProcessedKeys.join(', ') + ']' : '') +
-        ', skipped: ' + allSkippedKeys.length +
-        (allSkippedKeys.length ? ' [' + allSkippedKeys.join(', ') + ']' : '') + ' ══');
-
-    return {
-        success: true,
-        processed: allProcessedKeys.length,
-        skipped: allSkippedKeys.length,
-        processedKeys: allProcessedKeys,
-        skippedKeys: allSkippedKeys
-    };
+    console.log('\n══ SM Agent complete ══');
+    return { success: true, processed: runSummary.length };
 }
 
 if (typeof module !== 'undefined' && module.exports) {

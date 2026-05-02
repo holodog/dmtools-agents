@@ -217,6 +217,13 @@
           "skipIfLabel": "sm_bug_to_fix_check_triggered",
           "workflowRef": "master",
           "localExecution": true
+        },
+        {
+          "description": "Automation Health Monitor → detect and flag stuck tickets",
+          "jql": "project = MAJESENS AND labels is not empty AND updated < '-12h' AND labels != 'sm_automation_stuck'",
+          "configFile": "agents/sm_health_monitor.json",
+          "workflowRef": "master",
+          "localExecution": true
         }
       ]
     }
