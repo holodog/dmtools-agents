@@ -170,8 +170,6 @@
           "description": "CI Pending Test Cases → check PR CI status",
           "jql": "project = MAJESENS AND issuetype in ('Test Case') AND status in ('CI Pending')",
           "configFile": "agents/new_test_ci_check.json",
-          "skipIfLabel": "new_sm_ci_check_triggered",
-          "addLabel": "new_sm_ci_check_triggered",
           "workflowRef": "master",
           "enabled": true,
           "localExecution": true
