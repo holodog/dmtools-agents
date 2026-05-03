@@ -188,6 +188,9 @@ function action(params) {
 
         console.log('Found PR #' + pr.number);
 
+        // Remove the ci_check_triggered label
+        try { jira_remove_label({ key: ticketKey, label: LABELS.NEW_SM_CI_CHECK }); } catch (e) {}
+
         // Get PR details to get head SHA
         var prDetails;
         try {
