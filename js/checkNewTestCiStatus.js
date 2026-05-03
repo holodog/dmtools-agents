@@ -99,15 +99,12 @@ function getCIStatus(owner, repo, commitSha) {
 }
 
 function action(params) {
+    var actualParams = params.ticket ? params : (params.jobParams || params);
+    var ticket = actualParams.ticket;
+    var ticketKey = ticket.key;
+
     try {
-        var actualParams = params.ticket ? params : (params.jobParams || params);
-        var ticket = actualParams.ticket;
-        var ticketKey = ticket.key;
-
         console.log('=== Checking CI status for', ticketKey, '===');
-
-        // Remove the ci_check_triggered label
-        try { jira_remove_label({ key: ticketKey, label: LABELS.NEW_SM_CI_CHECK }); } catch (e) {}
 
         // Get full ticket for labels
         var fullTicket;
@@ -268,10 +265,6 @@ function action(params) {
             // CI failed — write ci_failures.md, move to In Rework, add retry label
             console.log('CI failed — triggering rework');
 
-            // Use detectFailedChecks from githubHelpers to write ci_failures.md to a temp location
-            // Since this is a local execution (no repo cloned), we can't use detectFailedChecks directly
-            // Instead, we fetch logs manually and write them
-
             var md = '# ⚠️ CI Check(s) Failed — Fix Test\n\n';
             md += ciStatus.failed + ' check(s) failed on PR #' + prDetails.number + ' (commit `' + headSha.substring(0, 8) + '`):\n\n';
 
@@ -352,15 +345,15 @@ function action(params) {
     } catch (error) {
         console.error('❌ Error in checkNewTestCiStatus:', error);
         try {
-            var key = (params.ticket || (params.jobParams && params.jobParams.ticket) || {}).key;
-            if (key) {
-                jira_post_comment({
-                    key: key,
-                    comment: 'h3. ❌ CI Status Check Error\n\n{code}' + error.toString() + '{code}'
-                });
-            }
+            jira_post_comment({
+                key: ticketKey,
+                comment: 'h3. ❌ CI Status Check Error\n\n{code}' + error.toString() + '{code}'
+            });
         } catch (e) {}
         return { success: false, error: error.toString() };
+    } finally {
+        // Force label removal on all exit paths
+        try { jira_remove_label({ key: ticketKey, label: LABELS.NEW_SM_CI_CHECK }); } catch (e) {}
     }
 }
 
