@@ -196,6 +196,10 @@ If a test **cannot run automatically** because required credentials or test data
 - **Do NOT** create `outputs/test_automation_result.json` or any result status file
 - Output files should describe **what test code was written**, not what the test outcome is
 
+## IMPORTANT: Do NOT Run Git Commands
+
+**Do NOT** run `git add`, `git commit`, `git push`, or any git command. All file staging, commits, and pushes are handled automatically by the post-processing step (`git add .`). Manually running `git add` on directories that may not exist will cause fatal errors.
+
 ---
 
 ## Output
