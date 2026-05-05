@@ -305,9 +305,15 @@ function action(params) {
     
     try {
         file_write({ path: 'agents/outputs/sm_summary.md', content: md });
-        console.log('\nSummary written to agents/outputs/sm_summary.md');
+        console.log('\nSummary written to agents/outputs/sm_summary.md (' + md.length + ' bytes)');
     } catch (e) {
-        console.warn('Failed summary file:', e);
+        console.warn('  ⚠️ Failed summary file: ' + e.message);
+        try {
+            file_write({ path: '/workspace/agents/outputs/sm_summary.md', content: md });
+            console.log('\nSummary written to /workspace/agents/outputs/sm_summary.md');
+        } catch (e2) {
+            console.warn('  ⚠️ Fallback write also failed: ' + e2.message);
+        }
     }
 
     console.log('\n══ SM Agent complete ══');
