@@ -91,14 +91,23 @@ function checkoutPRBranch(branchName) {
 
     // Clean ALL uncommitted changes including dmtools-generated input/ files
     // The input/ folder is created by CliExecutionHelper before preCliJSAction runs
-    // Order matters: reset tracked files FIRST, then clean untracked/ignored files
+    // Must remove it before checkout since git checkout will abort on untracked conflicts
     try {
-        cli_execute_command({ command: 'git reset --hard HEAD 2>/dev/null || true' });
-        cli_execute_command({ command: 'git clean -fdx 2>/dev/null || true' });
-        console.log('Cleaned all uncommitted changes before branch checkout');
+        cli_execute_command({ command: 'rm -rf input/' });
+    } catch (e) {
+        console.warn('Could not remove input/ folder:', e);
+    }
+    try {
+        cli_execute_command({ command: 'git reset --hard HEAD' });
+    } catch (e) {
+        console.warn('Could not reset tracked files:', e);
+    }
+    try {
+        cli_execute_command({ command: 'git clean -fdx' });
     } catch (e) {
         console.warn('Could not clean workspace:', e);
     }
+    console.log('Cleaned all uncommitted changes before branch checkout');
 
     const localBranch = cleanCommandOutput(
         cli_execute_command({ command: 'git branch --list "' + branchName + '"' }) || ''
