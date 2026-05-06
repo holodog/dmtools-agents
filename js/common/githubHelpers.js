@@ -581,6 +581,62 @@ function detectFailedChecks(owner, repo, headSha, inputFolder) {
     }
 }
 
+/**
+ * Detect multi-ticket stacked PRs by analyzing commit messages.
+ * Returns array of other ticket keys found in PR commits (excluding the target ticketKey).
+ *
+ * @param {string} owner     - GitHub owner
+ * @param {string} repo      - GitHub repository name
+ * @param {string} baseRef   - Base branch ref (e.g. "main")
+ * @param {string} headRef   - Head branch ref (PR branch)
+ * @param {string} ticketKey - Target ticket key (e.g. "MAJESENS-431")
+ * @returns {string[]} Other ticket keys found in commit messages
+ */
+function detectMultiTicketPRs(owner, repo, baseRef, headRef, ticketKey) {
+    try {
+        console.log('Checking for multi-ticket PR commits...');
+
+        // Use git log to find commits between base and head
+        var logOutput = cleanCommandOutput(
+            cli_execute_command({ command: 'git log origin/' + baseRef + '...' + headRef + ' --oneline --no-merges' }) || ''
+        );
+
+        if (!logOutput) {
+            console.log('No commits found for multi-ticket check');
+            return [];
+        }
+
+        // Extract ticket keys from commit messages (pattern: MAJESENS-XXX or JD-XXX)
+        var ticketKeyPattern = /(MAJESENS-\d+|JD-\d+)/g;
+        var foundKeys = {};
+        var lines = logOutput.split('\n');
+
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            var matches = line.match(ticketKeyPattern);
+            if (matches) {
+                for (var j = 0; j < matches.length; j++) {
+                    if (matches[j] !== ticketKey) {
+                        foundKeys[matches[j]] = true;
+                    }
+                }
+            }
+        }
+
+        var otherKeys = Object.keys(foundKeys);
+        if (otherKeys.length > 0) {
+            console.warn('⚠️ Multi-ticket PR detected:', otherKeys.join(', '));
+        } else {
+            console.log('✅ Single-ticket PR confirmed');
+        }
+        return otherKeys;
+
+    } catch (e) {
+        console.warn('Multi-ticket PR check failed (non-fatal):', e.message || e);
+        return [];
+    }
+}
+
 module.exports = {
     cleanCommandOutput: cleanCommandOutput,
     getGitHubRepoInfo: getGitHubRepoInfo,
@@ -591,5 +647,6 @@ module.exports = {
     fetchDiscussionsAndRawData: fetchDiscussionsAndRawData,
     writePRContext: writePRContext,
     detectMergeConflicts: detectMergeConflicts,
-    detectFailedChecks: detectFailedChecks
+    detectFailedChecks: detectFailedChecks,
+    detectMultiTicketPRs: detectMultiTicketPRs
 };

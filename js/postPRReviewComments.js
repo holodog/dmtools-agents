@@ -490,6 +490,12 @@ function action(params) {
                     statusName: STATUSES.IN_REWORK
                 });
                 console.log('✅ Ticket moved to In Rework');
+
+                // Clear rework idempotency label so SM picks up immediately
+                try {
+                    jira_remove_label({ key: ticketKey, label: 'sm_story_rework_triggered' });
+                    console.log('✅ Cleared sm_story_rework_triggered for immediate SM pickup');
+                } catch (e) {}
             }
         } catch (statusError) {
             console.warn('Could not update ticket status/label:', statusError);

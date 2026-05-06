@@ -76,6 +76,11 @@ function action(params) {
         var headSha = prDetails.head ? prDetails.head.sha : null;
         var failedChecks = gh.detectFailedChecks(repoInfo.owner, repoInfo.repo, headSha, inputFolder);
 
+        // Step 6.6: Detect multi-ticket stacked PRs
+        var baseRef = prDetails.base ? prDetails.base.ref : 'main';
+        var headRef = branchName || (prDetails.head && prDetails.head.ref);
+        var otherTickets = gh.detectMultiTicketPRs(repoInfo.owner, repoInfo.repo, baseRef, headRef, ticketKey);
+
         // Step 7: Jira comment
         try {
             var jiraComment = 'h3. 🔍 Automated PR Review Started\n\n' +
@@ -88,6 +93,14 @@ function action(params) {
                     '⚠️ *CI checks failing* — ' + failedChecks.length + ' check(s) did not pass:\n' +
                     failedChecks.map(function(c) { return '* {code}' + c.name + '{code}'; }).join('\n') +
                     '\nError logs are in {code}ci_failures.md{code} — reviewer will flag these as blocking issues.' +
+                    '{panel}\n\n';
+            }
+
+            if (otherTickets.length > 0) {
+                jiraComment += '{panel:bgColor=#FFF7E6|borderColor=#FF8B00}' +
+                    '⚠️ *Multi-ticket PR detected* — commits reference other tickets: ' +
+                    otherTickets.join(', ') +
+                    '\nReview may include noise from unrelated work. Reviewer should focus only on changes relevant to this ticket.' +
                     '{panel}\n\n';
             }
 
