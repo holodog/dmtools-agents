@@ -11,6 +11,9 @@ function action(params) {
     try {
         var ticketKey = params.ticket.key;
         var initiatorId = params.initiator;
+        if (!initiatorId) {
+            try { initiatorId = JIRA_ASSIGNEE_ACCOUNT_ID || null; } catch (e) {}
+        }
         var wipLabel = params.metadata && params.metadata.contextId
             ? params.metadata.contextId + '_wip'
             : null;
