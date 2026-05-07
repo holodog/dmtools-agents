@@ -10,4 +10,10 @@ Implement the ticket requirements including code implementation and unit tests. 
 
 **OUT OF SCOPE**: E2E automation is not part of this task — focus on unit tests only.
 
+**IMPORTANT** If this ticket consumes backend APIs (common in frontend tickets):
+  1. Check `comments.md` for API specifications posted by the backend development agent
+  2. Look for linked Jira issues with "blocks" relationship — the backend tickets contain API endpoint definitions
+  3. Use the exact endpoint paths, request bodies, and response schemas documented there
+  4. Do not guess API shapes — use the contract from the backend ticket or Confluence API docs page linked there
+
 DO NOT create branches or push — focus only on code implementation. You must compile and run tests before finishing.

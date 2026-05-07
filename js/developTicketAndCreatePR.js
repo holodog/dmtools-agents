@@ -435,6 +435,210 @@ function retryAfterPushFailure(ticketKey, branchName, pushError) {
 }
 
 /**
+ * API Sync: post endpoint changes to Jira comment + Confluence page.
+ * Reads outputs/response.md, extracts API Changes section, posts structured
+ * Jira comment, creates Confluence page with full API spec.
+ *
+ * @param {string} ticketKey - Jira ticket key (e.g., MS-123)
+ * @param {string} ticketSummary - Ticket summary text
+ * @returns {Object} Result with success flag and message
+ */
+function postApiSync(ticketKey, ticketSummary) {
+    try {
+        var responseContent = '';
+        try {
+            responseContent = file_read('outputs/response.md');
+            if (responseContent) responseContent = responseContent.trim();
+        } catch (e) {
+            return { success: false, reason: 'Could not read outputs/response.md' };
+        }
+        if (!responseContent) {
+            return { success: false, reason: 'response.md is empty' };
+        }
+
+        var endpoints = extractEndpoints(responseContent);
+        if (endpoints.length === 0) {
+            return { success: false, reason: 'No API changes found in response.md' };
+        }
+
+        console.log('Extracted ' + endpoints.length + ' API endpoint(s) from response.md');
+
+        // Post structured comment to Jira
+        var jiraComment = 'h3. *API Changes*\n\n';
+        jiraComment += 'Endpoints added/modified for ' + ticketKey + ' (' + ticketSummary + '):\n\n';
+        jiraComment += '||Method||Endpoint||Description||\n';
+        for (var i = 0; i < endpoints.length; i++) {
+            var ep = endpoints[i];
+            jiraComment += '|' + ep.method + '|' + ep.path + '|' + ep.description + '|\n';
+        }
+        jiraComment += '\n{color:#707070}OpenAPI spec updated in {code}public/docs/openapi.yaml{code} and docs at {code}DOCS/api/rest-api.md{code}{color}\n';
+
+        jira_post_comment({ key: ticketKey, comment: jiraComment });
+        console.log('Posted API comment to ' + ticketKey);
+
+        // Create Confluence page with full API spec
+        var confluenceUrl = createApiConfluencePage(ticketKey, ticketSummary, endpoints);
+        if (confluenceUrl) {
+            jira_post_comment({
+                key: ticketKey,
+                comment: 'h3. API Documentation\n\nFull API specification: ' + confluenceUrl
+            });
+            console.log('Created Confluence page: ' + confluenceUrl);
+        }
+
+        return {
+            success: true,
+            message: 'Posted ' + endpoints.length + ' API change(s) to Jira' + (confluenceUrl ? ' + Confluence' : ''),
+            apiChanges: endpoints.length,
+            confluenceUrl: confluenceUrl
+        };
+    } catch (error) {
+        console.warn('Failed to run API sync:', error);
+        return { success: false, reason: error.toString() };
+    }
+}
+
+/**
+ * Extract API endpoint changes from response.md content.
+ * Strategy 1: Find "API Changes" heading, parse markdown table.
+ * Strategy 2: Fallback — scan for HTTP method + /api/ patterns.
+ *
+ * @param {string} content - Full response.md text
+ * @returns {Array} Array of {method, path, description}
+ */
+function extractEndpoints(content) {
+    var endpoints = [];
+
+    // Strategy 1: Find "API Changes" section and parse table
+    var apiSectionStart = content.indexOf('API Changes');
+    if (apiSectionStart !== -1) {
+        var sectionEnd = content.indexOf('## ', apiSectionStart + 20);
+        if (sectionEnd === -1) sectionEnd = content.length;
+        var section = content.substring(apiSectionStart, sectionEnd);
+        var tableLines = section.split('\n');
+        var inTable = false;
+        for (var i = 0; i < tableLines.length; i++) {
+            var line = tableLines[i].trim();
+            if (line.indexOf('|---') === 0 || line.indexOf('||--') === 0) { inTable = true; continue; }
+            if (line.indexOf('|') !== 0) { if (inTable) break; continue; }
+
+            var cells = line.split('|');
+            var endpointCell = '';
+            var descCell = '';
+            for (var j = 1; j < cells.length; j++) {
+                var val = cells[j].trim();
+                if (val === '' || val === '---' || val === '--') continue;
+                if (endpointCell === '') { endpointCell = val; }
+                else { descCell = val; break; }
+            }
+            var httpMethods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
+            var foundMethod = '';
+            for (var m = 0; m < httpMethods.length; m++) {
+                if (endpointCell.indexOf(httpMethods[m]) === 0) { foundMethod = httpMethods[m]; break; }
+            }
+            if (foundMethod) {
+                var slashIdx = endpointCell.indexOf('/');
+                var path = slashIdx !== -1 ? endpointCell.substring(slashIdx) : endpointCell;
+                endpoints.push({ method: foundMethod, path: path, description: descCell });
+            }
+        }
+    }
+
+    // Strategy 2: Fallback — scan entire content for endpoint patterns
+    if (endpoints.length === 0) {
+        var lines = content.split('\n');
+        var seen = {};
+        var methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
+        for (var k = 0; k < lines.length; k++) {
+            for (var n = 0; n < methods.length; n++) {
+                var prefix = methods[n] + ' /api/';
+                var lineIdx = lines[k].indexOf(prefix);
+                if (lineIdx !== -1) {
+                    var rest = lines[k].substring(lineIdx).trim();
+                    var parts = rest.split(/\s+/);
+                    var m = parts[0];
+                    var p = parts[1] || '';
+                    var key = m + ' ' + p;
+                    if (p && !seen[key]) {
+                        seen[key] = true;
+                        endpoints.push({ method: m, path: p, description: rest });
+                    }
+                }
+            }
+        }
+    }
+
+    return endpoints;
+}
+
+/**
+ * Create a per-ticket Confluence page documenting the API endpoints added/changed.
+ * Page title: "API: <TicketKey> — <summary>". Frontend agents find these via
+ * Jira comments on linked backend tickets; humans browse the central
+ * "Majesens API Specification" page.
+ *
+ * @param {string} ticketKey - Jira ticket key
+ * @param {string} summary - Ticket summary
+ * @param {Array} endpoints - Array of {method, path, description}
+ * @returns {string} Confluence page URL or empty string
+ */
+function createApiConfluencePage(ticketKey, summary, endpoints) {
+    var colors = { GET: '#2ecc71', POST: '#3498db', PUT: '#f39c12', DELETE: '#e74c3c', PATCH: '#9b59b6' };
+
+    var pageTitle = 'API: ' + ticketKey + ' — ' + summary;
+    pageTitle = pageTitle.substring(0, 255);
+
+    var html = '<h1>API Changes: ' + escHtml(ticketKey) + '</h1>';
+    html += '<p>Ticket: <a href="https://majesens.atlassian.net/browse/' + ticketKey + '">' + ticketKey + '</a> — ' + escHtml(summary) + '</p>';
+    html += '<p>Central API docs: <a href="https://majesens.atlassian.net/wiki/spaces/majesens/pages/17301505/Majesens+API+Specification">Majesens API Specification</a></p>';
+    html += '<h2>Endpoints</h2>';
+    html += '<table><thead><tr><th>Method</th><th>Endpoint</th><th>Description</th></tr></thead><tbody>';
+
+    for (var i = 0; i < endpoints.length; i++) {
+        var ep = endpoints[i];
+        var color = colors[ep.method] || '#7f8c8d';
+        html += '<tr><td><span style="color:' + color + ';font-weight:bold">' + ep.method + '</span></td>';
+        html += '<td><code>' + escHtml(ep.path) + '</code></td>';
+        html += '<td>' + escHtml(ep.description) + '</td></tr>';
+    }
+    html += '</tbody></table>';
+
+    var space = 'majesens';
+    try { space = CONFLUENCE_DEFAULT_SPACE || space; } catch (e) {}
+
+    try {
+        var result = confluence_create_page({
+            spaceKey: space,
+            title: pageTitle,
+            body: html,
+            bodyFormat: 'storage'
+        });
+        if (result && typeof result === 'string') {
+            try {
+                var parsed = JSON.parse(result);
+                if (parsed && parsed._links && parsed._links.webui) {
+                    return 'https://majesens.atlassian.net' + parsed._links.webui;
+                }
+            } catch (pe) {}
+        }
+    } catch (ce) {
+        console.warn('Confluence page creation failed:', ce);
+    }
+
+    return '';
+}
+
+/**
+ * HTML-escape a string for safe embedding in Confluence storage format.
+ * @param {string} str - Input string
+ * @returns {string} Escaped string
+ */
+function escHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
  * Main action function - orchestrates the entire workflow
  *
  * @param {Object} params - Parameters from Teammate job
@@ -653,6 +857,18 @@ function action(params) {
             } catch (labelError) {
                 console.warn('Failed to remove WIP label "' + wipLabel + '":', labelError);
             }
+        }
+
+        // ── API Sync: post endpoint changes to Jira + Confluence ───────────
+        try {
+            var apiSyncResult = postApiSync(ticketKey, ticketSummary);
+            if (apiSyncResult.success) {
+                console.log('✅ API sync: ' + apiSyncResult.message);
+            } else {
+                console.log('⏭️  API sync skipped: ' + apiSyncResult.reason);
+            }
+        } catch (e) {
+            console.warn('Failed to run API sync:', e);
         }
 
         console.log('✅ Development workflow completed successfully');

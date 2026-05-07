@@ -27,6 +27,21 @@ Implement code changes based on ticket requirements including:
   - Unit tests following existing test patterns in the codebase
   - Documentation updates ONLY if explicitly mentioned in ticket requirements
 
+**IMPORTANT** If you are working in a backend repository (ms_back or similar):
+  After implementing new endpoints, updating existing ones, or changing request/response schemas:
+  1. Update the OpenAPI spec at `public/docs/openapi.yaml` — add/modify paths, schemas, tags
+  2. Update the REST API docs at `DOCS/api/rest-api.md` — document new endpoints with parameters and examples
+  3. In your development summary (outputs/response.md), add an "API Changes" section listing each endpoint changed:
+
+  ```
+  ## API Changes
+
+  | Endpoint | Description |
+  |----------|-------------|
+  | GET /api/payments/transactions | Paginated transaction history |
+  | POST /api/reviews | Submit user review |
+  ```
+
 **IMPORTANT**: Before finishing, you MUST run all unit tests and confirm they pass. If tests fail, fix the issues before completing. Do not finish with failing tests.
 
 **IMPORTANT**: Check whether a CI/CD workflow exists that runs unit tests automatically on pull request push or update (e.g. `.github/workflows/` for GitHub). If no such workflow exists, create one. For GitHub, create a workflow file under `.github/workflows/` that:
