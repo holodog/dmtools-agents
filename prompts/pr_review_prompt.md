@@ -91,3 +91,7 @@ GitHub-formatted general PR comment (referenced in `pr_review.json` → `general
 
 ### 3. `outputs/response.md` — REQUIRED
 Jira-formatted review summary posted as a ticket comment.
+
+## Task
+
+Read all files from the `input/` directory for this ticket, perform the review, and write the three required output files to `outputs/`. Do not ask for clarification — execute the review now.
