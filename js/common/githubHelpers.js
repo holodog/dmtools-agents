@@ -409,20 +409,28 @@ function detectMergeConflicts(baseBranch, inputFolder) {
             });
             console.warn('⚠️ Merge conflicts in ' + conflictFiles.length + ' file(s):', conflictFiles.join(', '));
 
-            var md = '# ⚠️ Merge Conflicts — Resolve Before Rework\n\n';
-            md += 'This branch has conflicts with `' + baseBranch + '`. ';
-            md += conflictFiles.length + ' file(s) contain conflict markers:\n\n';
+            // Auto-resolve conflicts by accepting the PR branch version (--ours).
+            // The PR branch contains the feature being worked on; base branch has
+            // unrelated changes from other merged PRs. Agent can adjust if needed.
+            for (var i = 0; i < conflictFiles.length; i++) {
+                try {
+                    cli_execute_command({ command: 'git checkout --ours ' + conflictFiles[i] });
+                    cli_execute_command({ command: 'git add ' + conflictFiles[i] });
+                } catch (resolveErr) {
+                    console.warn('Could not auto-resolve conflict in ' + conflictFiles[i] + ':', resolveErr);
+                }
+            }
+            console.log('✅ Auto-resolved ' + conflictFiles.length + ' conflict(s) with --ours');
+
+            var md = '# Merge Conflicts — Auto-Resolved\n\n';
+            md += 'This branch had conflicts with `' + baseBranch + '`. ';
+            md += conflictFiles.length + ' file(s) were auto-resolved by keeping the PR branch version:\n\n';
             conflictFiles.forEach(function(f) { md += '- `' + f + '`\n'; });
-            md += '\n## Resolution Steps\n\n';
-            md += '1. Open each conflicting file and resolve the `<<<<<<<` / `=======` / `>>>>>>>` markers\n';
-            md += '2. Stage each resolved file: `git add <file>`\n';
-            md += '3. Once all conflicts are resolved, proceed with fixes from `pr_discussions.md`\n\n';
-            md += '**Do NOT run `git commit` or `git merge --abort`** — the commit and push are handled automatically.\n';
+            md += '\nThe AI should verify the resolved files are correct and adjust if base branch changes are needed.\n';
 
             file_write({ path: inputFolder + '/merge_conflicts.md', content: md });
             console.log('✅ Wrote merge_conflicts.md');
 
-            // Leave the working directory in the conflicted merge state so the agent can resolve it
             return conflictFiles;
 
         } catch (statusError) {
