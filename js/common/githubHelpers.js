@@ -374,6 +374,10 @@ function detectMergeConflicts(baseBranch, inputFolder) {
             // Already a complete repo — harmless, continue
         }
 
+        // Remove workflow-generated credential store that would block the merge
+        // (created by ai-teammate.yml before Docker container start)
+        try { cli_execute_command({ command: 'rm -f .git-credentials' }); } catch (e) {}
+
         // Attempt the merge without committing
         cli_execute_command({ command: 'git merge origin/' + baseBranch + ' --no-commit --no-ff' });
 
