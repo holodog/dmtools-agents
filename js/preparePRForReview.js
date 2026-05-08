@@ -62,8 +62,38 @@ function action(params) {
             console.warn('Could not checkout PR branch:', e);
         }
 
-        // Step 5: Diff + discussions (human-readable + raw with IDs)
+        // Step 4.5: Detect merge conflicts — writes merge_conflicts.md if found
         const baseBranch = prDetails.base ? prDetails.base.ref : 'main';
+        const conflictFiles = gh.detectMergeConflicts(baseBranch, inputFolder);
+
+        // If conflicts exist, label the ticket so sm_ms.json routes to pr_rework instead
+        if (conflictFiles.length > 0) {
+            console.warn('⚠️ Merge conflicts detected — skipping review, labeling has-conflicts');
+            try { jira_add_label({ key: ticketKey, label: 'has-conflicts' }); } catch (e) {}
+            try {
+                jira_post_comment({
+                    key: ticketKey,
+                    comment: 'h3. ⚠️ Merge Conflicts Detected\n\n' +
+                        'PR branch has conflicts with {code}' + baseBranch + '{code}. ' +
+                        conflictFiles.length + ' file(s) need resolution.\n\n' +
+                        'Conflicting files:\n' +
+                        conflictFiles.map(function(f) { return '* {code}' + f + '{code}'; }).join('\n') + '\n\n' +
+                        '_Rework agent will be triggered to resolve conflicts._'
+                });
+            } catch (e) {}
+            return {
+                success: true,
+                prNumber: prDetails.number,
+                prUrl: prDetails.html_url,
+                branchName: branchName,
+                owner: repoInfo.owner,
+                repo: repoInfo.repo,
+                hasConflicts: true,
+                conflictFiles: conflictFiles
+            };
+        }
+
+        // Step 5: Diff + discussions (human-readable + raw with IDs)
         const diff = gh.getPRDiff(baseBranch, branchName || (prDetails.head && prDetails.head.ref));
 
         console.log('Fetching PR discussions...');
@@ -87,6 +117,13 @@ function action(params) {
                 '*Pull Request*: [PR #' + prDetails.number + '|' + prDetails.html_url + ']\n' +
                 '*Branch*: {code}' + (branchName || 'unknown') + '{code}\n' +
                 '*Files Changed*: ' + (prDetails.changed_files || 0) + '\n\n';
+
+            if (conflictFiles.length > 0) {
+                jiraComment += '{panel:bgColor=#FFEBE6|borderColor=#DE350B}' +
+                    '⚠️ *Merge conflicts detected* — ' + conflictFiles.length + ' file(s) must be resolved:\n' +
+                    conflictFiles.map(function(f) { return '* {code}' + f + '{code}'; }).join('\n') +
+                    '{panel}\n\n';
+            }
 
             if (failedChecks.length > 0) {
                 jiraComment += '{panel:bgColor=#FFEBE6|borderColor=#DE350B}' +

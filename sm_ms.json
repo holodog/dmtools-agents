@@ -73,6 +73,16 @@
           "enabled": true
         },
         {
+          "description": "In Review with merge conflicts → trigger pr_rework for resolution",
+          "jql": "project = MAJESENS AND status in ('In Review', 'In Review - Passed', 'In Review - Failed') AND labels = 'has-conflicts'",
+          "configFile": "agents/pr_rework.json",
+          "customParams": {
+            "removeLabel": "has-conflicts"
+          },
+          "workflowRef": "master",
+          "localExecution": true
+        },
+        {
           "description": "In Review Stories & Bugs → trigger pr_review",
           "jql": "project = MAJESENS AND issuetype in ('Story', 'Bug') AND status in ('In Review') AND labels NOT IN ('pr_approved')",
           "configFile": "agents/pr_review.json",
