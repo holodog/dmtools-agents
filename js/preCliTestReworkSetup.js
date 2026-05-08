@@ -97,7 +97,7 @@ function action(params) {
                     title: prTitle,
                     body: 'Auto-created PR for rework of test automation.\n\nTicket: ' + ticketKey,
                     head: testBranchName,
-                    base: 'main'
+                    base: typeof DEFAULT_BASE_BRANCH !== 'undefined' ? DEFAULT_BASE_BRANCH : 'main'
                 });
                 file_write({ path: 'pr_create_' + ticketKey + '.json', content: prData });
 
