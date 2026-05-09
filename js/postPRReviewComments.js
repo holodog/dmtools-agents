@@ -12,7 +12,48 @@
 const { LABELS, STATUSES } = require('./config.js');
 
 /**
+ * Parse response.md when pr_review.json is missing.
+ * Extracts recommendation + issue counts from text patterns.
+ * @param {string} content - response.md content
+ * @returns {Object|null} Partial review data or null
+ */
+function parseResponseMd(content) {
+    if (!content) return null;
+
+    // Extract recommendation from patterns like:
+    // "RECOMMENDATION: REQUEST_CHANGES", "Verdict: APPROVE", "🚨 BLOCKED"
+    var recommendation = null;
+    var recMatch = content.match(/(?:RECOMMENDATION|VERDICT|RECOMMENDATION\s*[:=]?)\s*[:=]?\s*(APPROVE|REQUEST_CHANGES|BLOCK|APPROVED)/i);
+    if (recMatch) {
+        recommendation = recMatch[1].toUpperCase().replace(/^APPROVED$/, 'APPROVE');
+    } else if (/BLOCKED|BLOCK\b/.test(content.toUpperCase())) {
+        recommendation = 'BLOCK';
+    } else if (/REQUEST_CHANGES|CHANGES REQUESTED/.test(content.toUpperCase())) {
+        recommendation = 'REQUEST_CHANGES';
+    } else if (/APPROVE|APPROVED/.test(content.toUpperCase())) {
+        recommendation = 'APPROVE';
+    }
+
+    // Extract issue counts
+    var blocking = parseInt((content.match(/(?:BLOCKING|🚨)[\s\S]{0,30}?(\d+)/i) || [])[1], 10) || 0;
+    var important = parseInt((content.match(/(?:IMPORTANT|⚠️)[\s\S]{0,30}?(\d+)/i) || [])[1], 10) || 0;
+    var suggestions = parseInt((content.match(/(?:SUGGESTION[S]?|💡)[\s\S]{0,30}?(\d+)/i) || [])[1], 10) || 0;
+
+    if (!recommendation) return null;
+
+    return {
+        recommendation: recommendation,
+        summary: 'Parsed from response.md (AI did not produce structured JSON)',
+        generalComment: null,
+        inlineComments: [],
+        resolvedThreadIds: [],
+        issueCounts: { blocking: blocking, important: important, suggestions: suggestions }
+    };
+}
+
+/**
  * Read and parse outputs/pr_review.json
+ * Falls back to parsing response.md if JSON is missing/empty.
  * @returns {Object|null} Parsed review data or null on error
  */
 function readReviewJson() {
@@ -20,15 +61,29 @@ function readReviewJson() {
         const raw = file_read({ path: 'outputs/pr_review.json' });
         if (!raw || raw.trim() === '') {
             console.warn('outputs/pr_review.json is empty');
-            return null;
+        } else {
+            const parsed = JSON.parse(raw);
+            console.log('Parsed pr_review.json:', JSON.stringify(parsed, null, 2));
+            return parsed;
         }
-        const parsed = JSON.parse(raw);
-        console.log('Parsed pr_review.json:', JSON.stringify(parsed, null, 2));
-        return parsed;
     } catch (error) {
-        console.error('Failed to read/parse outputs/pr_review.json:', error);
-        return null;
+        console.warn('Failed to read/parse outputs/pr_review.json:', error.message || error);
     }
+
+    // Fallback: parse response.md
+    console.warn('Falling back to response.md parsing');
+    try {
+        const responseContent = file_read({ path: 'outputs/response.md' });
+        const parsed = parseResponseMd(responseContent);
+        if (parsed) {
+            console.log('Parsed from response.md:', JSON.stringify(parsed, null, 2));
+            return parsed;
+        }
+    } catch (e) {
+        console.warn('Could not read response.md:', e.message || e);
+    }
+
+    return null;
 }
 
 /**
@@ -289,10 +344,16 @@ function mergePR(workspace, repository, pullRequestId) {
  * @param {Object} reviewData - Parsed pr_review.json data
  * @param {string} prUrl - PR URL
  * @param {boolean} merged - Whether PR was merged
+ * @param {boolean} usedFallback - Whether fallback parsing was used
  */
-function postReviewToJira(ticketKey, reviewContent, reviewData, prUrl, merged) {
+function postReviewToJira(ticketKey, reviewContent, reviewData, prUrl, merged, usedFallback) {
     try {
         let comment = 'h2. 🔍 Automated PR Review Completed\n\n';
+
+        // Fallback warning
+        if (usedFallback) {
+            comment += '{panel:bgColor=#FFF7E6|borderColor=#FF8B00}⚠️ *Structured output missing* — AI did not produce pr_review.json. Results parsed from response.md or defaulted. Verify findings manually.{panel}\n\n';
+        }
 
         // Add outcome badge
         // Normalize: LLM sometimes returns "APPROVED" instead of "APPROVE"
@@ -355,14 +416,25 @@ function action(params) {
 
         console.log('=== Processing PR review results for', ticketKey, '===');
 
-        // Step 1: Read structured review data
-        const reviewData = readReviewJson();
+        // Step 1: Read structured review data (with response.md fallback)
+        var reviewData = readReviewJson();
+        var usedFallback = false;
         if (!reviewData) {
-            console.error('Failed to read pr_review.json');
-            return {
-                success: false,
-                error: 'No review data found in pr_review.json'
+            // Hard fallback: default to REQUEST_CHANGES with empty findings
+            console.error('Even response.md parsing failed — defaulting to REQUEST_CHANGES');
+            usedFallback = true;
+            reviewData = {
+                recommendation: 'REQUEST_CHANGES',
+                summary: 'AI review completed but produced no structured output. Manual review required.',
+                generalComment: null,
+                inlineComments: [],
+                resolvedThreadIds: [],
+                issueCounts: { blocking: 0, important: 0, suggestions: 0 }
             };
+        }
+        if (usedFallback || (reviewData.summary && reviewData.summary.indexOf('Parsed from response.md') !== -1)) {
+            usedFallback = true;
+            console.warn('Using fallback review data — AI did not produce pr_review.json');
         }
 
         console.log('Review recommendation:', reviewData.recommendation);
@@ -472,7 +544,7 @@ function action(params) {
         }
 
         // Step 6: Post review to Jira ticket
-        postReviewToJira(ticketKey, jiraReview, reviewData, prUrl, merged);
+        postReviewToJira(ticketKey, jiraReview, reviewData, prUrl, merged, usedFallback);
 
         // Step 7: Update ticket status based on outcome
         try {
