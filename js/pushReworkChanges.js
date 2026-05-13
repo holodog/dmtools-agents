@@ -84,13 +84,14 @@ function commitAndPush(ticketKey) {
     console.log('Current branch:', branchName);
 
     // Stage all changes
-    cli_execute_command({ command: 'git add .' });
+    cli_execute_command({ command: 'git add -A' });
 
-    // Check for actual changes
-    const rawStatus = cli_execute_command({ command: 'git status --porcelain' }) || '';
-    const status = cleanCommandOutput(rawStatus);
+    // Check for staged changes only (git diff --cached, not git status which shows submodule noise)
+    const stagedFiles = cleanCommandOutput(
+        cli_execute_command({ command: 'git diff --cached --name-only' }) || ''
+    );
 
-    if (status.trim()) {
+    if (stagedFiles.trim()) {
         const commitMsg = ticketKey + ' Rework: address PR review comments';
         cli_execute_command({ command: 'git commit -m "' + commitMsg + '"' });
         console.log('✅ Committed rework changes');
