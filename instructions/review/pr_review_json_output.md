@@ -1,8 +1,8 @@
-# PR Review JSON Output Format
+**IMPORTANT** If a file named `instruction.md` exists in the repository root, read it before reviewing.
 
-In addition to outputs/response.md (Jira-formatted review), you MUST generate:
+## outputs/pr_review.json — Single Source of Truth
 
-## outputs/pr_review.json
+This JSON file is the **only** output you must produce. It contains the complete review — no separate markdown files needed.
 
 ```json
 {
@@ -10,7 +10,7 @@ In addition to outputs/response.md (Jira-formatted review), you MUST generate:
   "summary": "Brief overall assessment in one paragraph",
   "prNumber": null,
   "prUrl": null,
-  "generalComment": "outputs/pr_review_general.md",
+  "generalCommentContent": "GitHub markdown text with the full review comment",
   "resolvedThreadIds": [],
   "inlineComments": [
     {
@@ -18,7 +18,7 @@ In addition to outputs/response.md (Jira-formatted review), you MUST generate:
       "line": 42,
       "startLine": 40,
       "side": "RIGHT",
-      "comment": "outputs/pr_review_comments/comment-1.md",
+      "commentContent": "GitHub markdown text for this inline comment",
       "severity": "BLOCKING|IMPORTANT|SUGGESTION"
     }
   ],
@@ -26,106 +26,40 @@ In addition to outputs/response.md (Jira-formatted review), you MUST generate:
     "blocking": 2,
     "important": 5,
     "suggestions": 3
-  }
+  },
+  "responseMdContent": "Jira Wiki Markup text for the ticket comment"
 }
 ```
 
+### Field Descriptions
+
+- **recommendation**: MUST be exactly `"APPROVE"`, `"REQUEST_CHANGES"`, or `"BLOCK"` (uppercase). NOT `"APPROVED"`, NOT `"verdict"`.
+- **summary**: One paragraph overall assessment (plain text)
+- **prNumber**: Leave null (filled by JS action)
+- **prUrl**: Leave null (filled by JS action)
+- **generalCommentContent**: Full GitHub-formatted review comment as a string. This becomes the PR comment. Use GitHub markdown (headings with `##`, bold with `**`, code blocks with triple backticks).
+- **resolvedThreadIds**: Array of GraphQL thread node IDs from `pr_discussions_raw.json` for threads fully fixed in this rework. Empty `[]` on first review.
+- **inlineComments**: Array of inline code review comments. Each entry:
+  - **file**: Relative path to file from repo root
+  - **line**: Line number to comment on (must be inside a diff hunk in `pr_diff.txt`)
+  - **startLine**: (Optional) Start line for multi-line range
+  - **side**: "RIGHT" for new code (default), "LEFT" for old code
+  - **commentContent**: Full comment text as GitHub markdown string
+  - **severity**: BLOCKING, IMPORTANT, or SUGGESTION
+- **issueCounts**: Counts matching actual findings by severity
+- **responseMdContent**: Full Jira-formatted review summary as a string. Use Jira Wiki syntax (`h1.`, `h2.`, `*bold*`, `{{code}}`, `{code:lang}`, `----`). This becomes the Jira ticket comment.
+
 ### ⚠️ CRITICAL: Use `recommendation`, NOT `verdict`
 
-The field MUST be named **`recommendation`** (not `verdict`, not `decision`, not `result`).  
-The value MUST be exactly one of: `APPROVE`, `REQUEST_CHANGES`, `BLOCK` (uppercase, no other values).
+The field MUST be named **`recommendation`** (not `verdict`, not `decision`, not `result`).
 
-❌ Wrong: `"verdict": "APPROVED"`  
+❌ Wrong: `"verdict": "APPROVED"`
 ✅ Correct: `"recommendation": "APPROVE"`
-- **summary**: One paragraph overall assessment (plain text)
-- **prNumber**: Leave null (will be filled by JS action)
-- **prUrl**: Leave null (will be filled by JS action)
-- **generalComment**: Path to markdown file with overall PR review comment (GitHub markdown)
-- **resolvedThreadIds**: Array of GraphQL thread node IDs (from `pr_discussions_raw.json` → `threads[i].threadId`) that were **fully fixed** in this rework and should be marked as resolved on GitHub. Leave empty `[]` on first review or when no prior threads were fixed. Only include threads whose fix you verified in the diff — do NOT resolve threads that are still open or only partially addressed.
-- **inlineComments**: Array of inline code review comments
-  - **file**: Relative path to file from repo root
-  - **line**: Line number to comment on
-  - **startLine**: (Optional) Start line for multi-line comment range
-  - **side**: "RIGHT" for new code (default), "LEFT" for old code
-  - **comment**: Path to markdown file with comment text (GitHub markdown)
-  - **severity**: BLOCKING, IMPORTANT, or SUGGESTION
-- **issueCounts**: Counts of each issue severity
 
-## outputs/pr_review_general.md
+### Inline Comments Policy
 
-Overall PR review comment in **GitHub Markdown** format (NOT Jira markup).
+**If APPROVE**: `inlineComments` must be empty. No suggestions in general comment either.
 
-Example:
-```markdown
-## 🤖 Automated Code Review
+**If REQUEST_CHANGES or BLOCK**: Only BLOCKING and IMPORTANT inline comments. No SUGGESTION-level inline comments.
 
-### 📊 Summary
-This PR implements [brief summary]. Overall code quality is [assessment].
-
-**Recommendation**: ✅ APPROVE / ⚠️ REQUEST CHANGES / 🚨 BLOCKED
-
-**Issues Found**:
-- 🚨 Blocking: 2
-- ⚠️ Important: 5
-- 💡 Suggestions: 3
-
-See inline comments for details.
-
-### 🔒 Security
-[Summary of security findings]
-
-### 🏗️ Code Quality
-[Summary of code quality findings]
-
-### ✅ Task Alignment
-[Summary of requirements coverage]
-```
-
-## outputs/pr_review_comments/
-
-Directory containing individual inline comment markdown files.
-
-**Naming**: `comment-1.md`, `comment-2.md`, etc.
-
-**Format**: GitHub Markdown (NOT Jira markup)
-
-Example `outputs/pr_review_comments/comment-1.md`:
-```markdown
-🚨 **BLOCKING: SQL Injection Vulnerability**
-
-This code is vulnerable to SQL injection because user input is directly concatenated into the query string.
-
-**Risk**: Critical - allows attackers to execute arbitrary SQL commands
-
-**Recommendation**:
-Use parameterized queries instead:
-\`\`\`javascript
-const query = 'SELECT * FROM users WHERE id = ?';
-db.query(query, [userId]);
-\`\`\`
-```
-
-## Important Notes:
-
-1. **Two different formats**:
-   - `outputs/response.md` - **Jira Wiki Markup** (for Jira ticket comment)
-   - `outputs/pr_review_general.md` + inline comments - **GitHub Markdown** (for PR comments)
-
-2. **Inline comments guidelines**:
-   - **MANDATORY**: Any issue specific to a line of code MUST be included in `inlineComments` array
-   - `issueCounts` MUST match the actual number of issues found
-   - Focus on specific code issues at exact locations
-   - Each comment should be self-contained
-   - Include code snippets when showing fixes
-   - Use severity emojis: 🚨 BLOCKING, ⚠️ IMPORTANT, 💡 SUGGESTION
-
-3. **General comment guidelines**:
-   - High-level overview of the review
-   - Summary of all findings
-   - Overall recommendation
-   - **If an issue is general and not tied to specific lines, include it here**
-   - Should reference that details are in inline comments
-
-4. **File locations in JSON**:
-   - Use relative paths from outputs/ directory
-   - Comment files numbered sequentially: comment-1.md, comment-2.md, etc.
+**Diff-only rule**: Inline comments ONLY on lines inside a diff hunk in `pr_diff.txt`. General findings go in `generalCommentContent`.

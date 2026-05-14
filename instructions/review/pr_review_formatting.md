@@ -1,141 +1,88 @@
-# PR Review Report Format
+# PR Review Output Format
 
-## Required Outputs
+## Single Output File
 
-You MUST generate:
-1. **outputs/response.md** - Jira-formatted review for ticket comment (Textile syntax)
-2. **outputs/pr_review.json** - Structured data for GitHub PR review (see pr_review_json_output.md)
-3. **outputs/pr_review_general.md** - General PR comment in GitHub markdown
-4. **outputs/pr_review_comments/** - Directory with individual inline comment files
+You produce exactly ONE file: `outputs/pr_review.json`. It contains all review data — no separate markdown files.
 
----
+See `pr_review_json_output.md` for the exact JSON schema.
 
-## outputs/response.md Format (JIRA WIKI MARKUP)
+### generalCommentContent — GitHub Markdown
 
-Structure your Jira review using **Jira Wiki Markup** (NOT Markdown) as follows:
+The `generalCommentContent` field contains the full GitHub-formatted PR review comment. Structure it like:
+
+```markdown
+## 🤖 Automated Code Review
+
+### 📊 Summary
+This PR implements [brief summary]. Overall code quality is [assessment].
+
+**Recommendation**: ✅ APPROVE / ⚠️ REQUEST CHANGES / 🚨 BLOCKED
+
+**Issues Found**:
+- 🚨 Blocking: 2
+- ⚠️ Important: 5
+- 💡 Suggestions: 3
+
+### 🔒 Security
+[Summary of security findings]
+
+### 🏗️ Code Quality
+[Summary of code quality findings]
+
+### ✅ Task Alignment
+[Summary of requirements coverage]
+```
+
+Use standard GitHub markdown: `##` headings, `**bold**`, triple backtick code blocks.
+
+### responseMdContent — Jira Wiki Markup
+
+The `responseMdContent` field contains the full Jira-formatted review. Structure it like:
 
 ```text
 h1. Pull Request Review
 
 h2. 📊 Summary
-[Brief overview: PR scope, overall quality assessment, and recommendation (APPROVE/REQUEST CHANGES/BLOCK)]
+[Brief overview and recommendation]
 
 ----
 
 h2. 🔒 Security Analysis
-[List all security findings, or "✅ No security issues found"]
-
-h3. 🚨 BLOCKING Security Issues
-* *[Issue Title]*
-** *Location*: {{file.js:123}}
-** *Risk*: [High/Critical]
-** *Description*: [What's wrong]
-** *Recommendation*: [How to fix]
-
-h3. ⚠️ Security Warnings
-* [Same structure as blocking]
-
-----
+[Security findings]
 
 h2. 🏗️ Code Quality & OOP Review
-
-h3. 🚨 BLOCKING Issues
-* *[Issue Title]*
-** *Location*: {{file.js:123}}
-** *Principle Violated*: [e.g., Single Responsibility Principle]
-** *Description*: [What's wrong]
-** *Recommendation*: [How to fix]
-
-h3. ⚠️ Important Issues
-* [Same structure]
-
-h3. 💡 Suggestions
-* [Same structure but less critical]
-
-----
+[Code quality findings]
 
 h2. ✅ Task Alignment
-
-h3. Requirements Coverage
-* ✅ [Requirement from ticket] - Implemented
-* ⚠️ [Requirement from ticket] - Partially implemented (explain)
-* ❌ [Requirement from ticket] - Missing (explain)
-
-h3. Out of Scope Changes
-* [List any changes not mentioned in ticket requirements]
-
-----
-
-h2. 🧪 Testing Review
-
-h3. Test Coverage
-* ✅ [What's tested well]
-* ⚠️ [What needs more tests]
-* ❌ [What's missing tests]
-
-h3. Test Quality Issues
-* [List any test quality concerns]
-
-----
-
-h2. 📝 Additional Notes
-
-h3. Performance Concerns
-* [If any]
-
-h3. Maintenance & Readability
-* [Comments on code maintainability]
-
-h3. Dependencies
-* [Any new dependencies added, are they necessary?]
-
-----
+[Requirements coverage]
 
 h2. 🎯 Final Recommendation
-
 *[APPROVE / REQUEST CHANGES / BLOCK]*
 
 *Blocking Issues Count*: [number]
 *Important Issues Count*: [number]
 *Suggestions Count*: [number]
-
-*Next Steps*:
-# [Action items for developer]
-# [Action items for developer]
-
-----
-
-h2. 📋 Detailed Findings
-
-[Optional: Additional detailed analysis for complex issues]
 ```
 
-**IMPORTANT SYNTAX RULES**:
-- Headings: `h1. Title`, `h2. Title`, `h3. Title`
-- Lists: `* item` for bullet, `# item` for numbered
-- Bold: `*text*`
-- Italic: `_text_`
-- Monospace/Code: `{{text}}`
-- Code Block: `{code:javascript}...{code}`
-- Panel: `{panel:title=Title|borderColor=#ccc}...{panel}`
-- Horizontal Rule: `----`
-- Links: `[Link Title|http://example.com]`
-- DO NOT use Markdown (`#`, `##`, `-`, `**`, `` ` ``, ` ``` `)
+Use Jira Wiki syntax: `h1.`, `h2.` headings, `*bold*`, `{{code}}`, `{code:lang}`, `----`, `* list`, `# numbered`.
 
----
+### Inline Comment Content
 
-## outputs/pr_review_general.md Format (GITHUB MARKDOWN)
+Each inline comment's `commentContent` is a GitHub markdown string with severity emoji, description, and fix suggestion:
 
-This file allows standard GitHub Markdown:
 ```markdown
-# General Review
-## Summary
-...
+🚨 **BLOCKING: SQL Injection Vulnerability**
+
+User input directly concatenated into SQL query without sanitization.
+
+**Vulnerable code**:
+```javascript
+const query = `SELECT * FROM users WHERE email = '${email}'`;
 ```
 
-## outputs/pr_review_comments/comment-X.md Format (GITHUB MARKDOWN)
-
-These files allow standard GitHub Markdown:
-```markdown
-**Suggestion:** Consider refactoring this...
+**Fix**: Use parameterized queries:
+```javascript
+const query = 'SELECT * FROM users WHERE email = ?';
+db.query(query, [email]);
+```
 ```

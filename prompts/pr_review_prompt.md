@@ -77,21 +77,19 @@ Be thorough, constructive, and specific. Provide file paths and line numbers for
 
 **CRITICAL — Inline comment diff-only rule**: Inline comments can ONLY be placed on lines that appear inside a diff hunk in `pr_diff.txt` (lines changed or added in this PR). If a finding is about a file or line **not touched in this PR**, include it in the general comment as text — do NOT create an inline comment for it. The GitHub API rejects inline comments on lines outside the diff with a 422 error.
 
-## ⚠️ MANDATORY OUTPUT FILES — automation will silently fail without these
+## ⚠️ MANDATORY OUTPUT — SINGLE FILE ONLY
 
-You MUST write all three files below. Do NOT just write the review as plain text — the post-processing pipeline reads these files directly.
+You MUST produce exactly ONE output file. Do NOT write any other files.
 
-### 1. `outputs/pr_review.json` — REQUIRED (exact format in `pr_review_json_output.md`)
-This is the machine-readable result consumed by the post-action. If it is missing the entire review outcome is lost — the ticket will not be merged, no status will change, and no comments will be posted.
+### `outputs/pr_review.json` — REQUIRED (exact format in `pr_review_json_output.md`)
 
-**⚠️ CRITICAL — `recommendation` field**: Use EXACTLY `"APPROVE"`, `"REQUEST_CHANGES"`, or `"BLOCK"`. Never `"APPROVED"` (missing D). Never use `"verdict"` as the field name.
+This JSON file is the **only** output you need to create. It contains the complete review — no separate markdown files, no separate response document. Everything lives inside this JSON.
 
-### 2. `outputs/pr_review_general.md` — REQUIRED
-GitHub-formatted general PR comment (referenced in `pr_review.json` → `generalComment`).
+**Critical rules:**
+- The `recommendation` field MUST be exactly `"APPROVE"`, `"REQUEST_CHANGES"`, or `"BLOCK"`
+- `generalCommentContent` MUST contain the full GitHub-formatted review comment as a string (GitHub markdown, not Jira markup)
+- `responseMdContent` MUST contain the full Jira-formatted review summary as a string (Jira Wiki syntax, not markdown)
+- Each inline comment's `commentContent` field MUST contain the full comment text as a string (GitHub markdown)
+- `issueCounts` MUST accurately reflect the number of findings in the `inlineComments` array and general comment
 
-### 3. `outputs/response.md` — REQUIRED
-Jira-formatted review summary posted as a ticket comment.
-
-## Task
-
-Read all files from the `input/` directory for this ticket, perform the review, and write the three required output files to `outputs/`. Do not ask for clarification — execute the review now.
+Write this JSON file to `outputs/pr_review.json`. Do not ask for clarification — execute the review now.

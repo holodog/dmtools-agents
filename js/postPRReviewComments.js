@@ -4,7 +4,7 @@
  * 1. Reads outputs/pr_review.json with structured review data
  * 2. Posts general review comment to GitHub PR using github_add_pr_comment
  * 3. Posts inline code comments to GitHub PR using github_add_inline_comment
- * 4. Posts Jira-formatted review from outputs/response.md to Jira ticket
+ * 4. Posts Jira-formatted review to Jira ticket (from responseMdContent or response.md)
  * 5. Updates ticket status based on review outcome
  * 6. Adds labels to indicate review completion
  */
@@ -34,10 +34,13 @@ function parseResponseMd(content) {
         recommendation = 'APPROVE';
     }
 
-    // Extract issue counts
-    var blocking = parseInt((content.match(/(?:BLOCKING|🚨)[\s\S]{0,30}?(\d+)/i) || [])[1], 10) || 0;
-    var important = parseInt((content.match(/(?:IMPORTANT|⚠️)[\s\S]{0,30}?(\d+)/i) || [])[1], 10) || 0;
-    var suggestions = parseInt((content.match(/(?:SUGGESTION[S]?|💡)[\s\S]{0,30}?(\d+)/i) || [])[1], 10) || 0;
+    // Extract issue counts - Jira wiki format: *Blocking Issues Count*: N
+    var blockingMatch = content.match(/(?:BLOCKING|🚨)[^\\n]*?Count[^\\n]*?(\d+)/i) || content.match(/Blocking Issues.*?(\d+)/i);
+    var blocking = parseInt(blockingMatch ? blockingMatch[1] : 0, 10) || 0;
+    var importantMatch = content.match(/(?:IMPORTANT|⚠️)[^\\n]*?Count[^\\n]*?(\d+)/i) || content.match(/Important Issues.*?(\d+)/i);
+    var important = parseInt(importantMatch ? importantMatch[1] : 0, 10) || 0;
+    var suggestionsMatch = content.match(/(?:SUGGESTION[S]?|💡)[^\\n]*?Count[^\\n]*?(\d+)/i) || content.match(/Suggestions.*?(\d+)/i);
+    var suggestions = parseInt(suggestionsMatch ? suggestionsMatch[1] : 0, 10) || 0;
 
     if (!recommendation) return null;
 
@@ -49,6 +52,47 @@ function parseResponseMd(content) {
         resolvedThreadIds: [],
         issueCounts: { blocking: blocking, important: important, suggestions: suggestions }
     };
+}
+
+/**
+ * Normalize review data to support both old (file-path refs) and new (inline strings) JSON formats.
+ * Old format: generalComment = "outputs/pr_review_general.md", comment = "outputs/pr_review_comments/comment-1.md"
+ * New format: generalCommentContent = "...", commentContent = "..."
+ */
+function normalizeReviewData(reviewData) {
+    var data = Object.assign({}, reviewData);
+
+    // Normalize general comment: prefer generalCommentContent (inline string), fall back to reading file
+    if (data.generalCommentContent) {
+        data._resolvedGeneralComment = data.generalCommentContent;
+    } else if (data.generalComment) {
+        try {
+            data._resolvedGeneralComment = file_read({ path: data.generalComment });
+        } catch (e) {
+            console.warn('Could not read generalComment file:', data.generalComment);
+            data._resolvedGeneralComment = '';
+        }
+    }
+
+    // Normalize inline comments: prefer commentContent, fall back to reading file
+    if (data.inlineComments && Array.isArray(data.inlineComments)) {
+        data.inlineComments = data.inlineComments.map(function(c) {
+            var normalized = Object.assign({}, c);
+            if (normalized.commentContent) {
+                normalized._resolvedComment = normalized.commentContent;
+            } else if (normalized.comment) {
+                try {
+                    normalized._resolvedComment = file_read({ path: normalized.comment });
+                } catch (e) {
+                    console.warn('Could not read comment file:', normalized.comment);
+                    normalized._resolvedComment = '';
+                }
+            }
+            return normalized;
+        });
+    }
+
+    return data;
 }
 
 /**
@@ -189,17 +233,16 @@ function findPRForTicket(workspace, repository, ticketKey) {
  * @param {string} workspace - GitHub owner/organization
  * @param {string} repository - GitHub repository name
  * @param {number} pullRequestId - PR number
- * @param {string} commentPath - Path to comment markdown file
+ * @param {string} comment - General comment content (already resolved)
  * @returns {boolean} Success status
  */
-function postGeneralComment(workspace, repository, pullRequestId, commentPath) {
-    try {
-        const comment = readMarkdownFile(commentPath);
-        if (!comment) {
-            console.warn('No general comment content found at', commentPath);
-            return false;
-        }
+function postGeneralComment(workspace, repository, pullRequestId, comment) {
+    if (!comment) {
+        console.warn('No general comment content provided');
+        return false;
+    }
 
+    try {
         console.log('Posting general review comment to PR #' + pullRequestId);
 
         github_add_pr_comment({
@@ -227,16 +270,16 @@ function postGeneralComment(workspace, repository, pullRequestId, commentPath) {
  * @returns {boolean} Success status
  */
 function postInlineComment(workspace, repository, pullRequestId, inlineComment) {
-    try {
-        const comment = readMarkdownFile(inlineComment.comment);
-        if (!comment) {
-            console.warn('No comment content found at', inlineComment.comment);
-            return false;
-        }
+    var comment = inlineComment._resolvedComment || '';
+    if (!comment) {
+        console.warn('No comment content for inline comment on ' + inlineComment.file);
+        return false;
+    }
 
+    try {
         console.log('Posting inline comment on ' + inlineComment.file + ':' + inlineComment.line);
 
-        const params = {
+        var params = {
             workspace: workspace,
             repository: repository,
             pullRequestId: String(pullRequestId),
@@ -245,7 +288,6 @@ function postInlineComment(workspace, repository, pullRequestId, inlineComment) 
             text: comment
         };
 
-        // Add optional parameters
         if (inlineComment.startLine) {
             params.startLine = String(inlineComment.startLine);
         }
@@ -340,7 +382,7 @@ function mergePR(workspace, repository, pullRequestId) {
 /**
  * Post review results to Jira ticket
  * @param {string} ticketKey - Ticket key
- * @param {string} reviewContent - Review content (from outputs/response.md)
+ * @param {string} reviewContent - Review content (from responseMdContent or response.md file)
  * @param {Object} reviewData - Parsed pr_review.json data
  * @param {string} prUrl - PR URL
  * @param {boolean} merged - Whether PR was merged
@@ -412,7 +454,6 @@ function postReviewToJira(ticketKey, reviewContent, reviewData, prUrl, merged, u
 function action(params) {
     try {
         const ticketKey = params.ticket.key;
-        const jiraReview = params.response || '';
 
         console.log('=== Processing PR review results for', ticketKey, '===');
 
@@ -427,9 +468,11 @@ function action(params) {
                 recommendation: 'REQUEST_CHANGES',
                 summary: 'AI review completed but produced no structured output. Manual review required.',
                 generalComment: null,
+                generalCommentContent: null,
                 inlineComments: [],
                 resolvedThreadIds: [],
-                issueCounts: { blocking: 0, important: 0, suggestions: 0 }
+                issueCounts: { blocking: 0, important: 0, suggestions: 0 },
+                responseMdContent: null
             };
         }
         if (usedFallback || (reviewData.summary && reviewData.summary.indexOf('Parsed from response.md') !== -1)) {
@@ -437,8 +480,14 @@ function action(params) {
             console.warn('Using fallback review data — AI did not produce pr_review.json');
         }
 
+        // Normalize: resolve file paths to inline content (supports both old and new JSON formats)
+        reviewData = normalizeReviewData(reviewData);
+
         console.log('Review recommendation:', reviewData.recommendation);
         console.log('Issue counts:', JSON.stringify(reviewData.issueCounts));
+
+        // Get Jira review content: prefer responseMdContent (inline), fall back to params.response
+        var jiraReview = reviewData.responseMdContent || params.response || '';
 
         // Step 2: Extract PR info from input folder or find PR using MCP
         let prNumber = null;
@@ -501,8 +550,8 @@ function action(params) {
             console.log('Posting review to GitHub PR #' + prNumber + ' (recommendation: ' + recommendation + ')');
 
             // Post general comment
-            if (reviewData.generalComment) {
-                postGeneralComment(repoInfo.owner, repoInfo.repo, prNumber, reviewData.generalComment);
+            if (reviewData._resolvedGeneralComment) {
+                postGeneralComment(repoInfo.owner, repoInfo.repo, prNumber, reviewData._resolvedGeneralComment);
             }
 
             // Post inline comments
