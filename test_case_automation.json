@@ -22,7 +22,7 @@
     "ticketContextDepth": 1,
     "attachResponseAsFile": false,
     "cleanupInputFolder": false,
-    "skipAIProcessing": true,
+    "skipAIProcessing": false,
     "alwaysPostComments": true,
     "envVariables": {
       "CLI_ALLOWED_COMMANDS": "find,ls,cat,mkdir,bash,pytest,python3,pip3,run-agent.sh",

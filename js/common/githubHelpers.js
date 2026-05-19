@@ -91,23 +91,14 @@ function checkoutPRBranch(branchName) {
 
     // Clean ALL uncommitted changes including dmtools-generated input/ files
     // The input/ folder is created by CliExecutionHelper before preCliJSAction runs
-    // Must remove it before checkout since git checkout will abort on untracked conflicts
+    // Order matters: reset tracked files FIRST, then clean untracked/ignored files
     try {
-        cli_execute_command({ command: 'rm -rf input/' });
-    } catch (e) {
-        console.warn('Could not remove input/ folder:', e);
-    }
-    try {
-        cli_execute_command({ command: 'git reset --hard HEAD' });
-    } catch (e) {
-        console.warn('Could not reset tracked files:', e);
-    }
-    try {
-        cli_execute_command({ command: 'git clean -fdx' });
+        cli_execute_command({ command: 'git reset --hard HEAD 2>/dev/null || true' });
+        cli_execute_command({ command: 'git clean -fdx 2>/dev/null || true' });
+        console.log('Cleaned all uncommitted changes before branch checkout');
     } catch (e) {
         console.warn('Could not clean workspace:', e);
     }
-    console.log('Cleaned all uncommitted changes before branch checkout');
 
     const localBranch = cleanCommandOutput(
         cli_execute_command({ command: 'git branch --list "' + branchName + '"' }) || ''
@@ -364,21 +355,15 @@ function detectMergeConflicts(baseBranch, inputFolder) {
     try {
         console.log('Checking for merge conflicts with origin/' + baseBranch + '...');
 
-        // Unshallow only if the repo is shallow; on a complete clone (full fetch-depth)
-        // 'git fetch --unshallow' fails with exit 128, which the Java layer logs as ERROR.
+        // Unshallow first so git merge has full history for a correct merge base.
+        // GitHub Actions checks out with --depth=1 by default; without this,
+        // 'git merge --no-commit' may report clean even when real conflicts exist.
         try {
-            const isShallow = cli_execute_command({ command: 'test -f .git/shallow && echo yes || echo no' }).trim();
-            if (isShallow === 'yes') {
-                cli_execute_command({ command: 'git fetch --unshallow' });
-                console.log('Unshallowed repository for full merge base detection');
-            }
+            cli_execute_command({ command: 'git fetch --unshallow' });
+            console.log('Unshallowed repository for full merge base detection');
         } catch (e) {
-            // Not a git repo or unexpected failure — skip unshallow, continue
+            // Already a complete repo — harmless, continue
         }
-
-        // Remove workflow-generated credential store that would block the merge
-        // (created by ai-teammate.yml before Docker container start)
-        try { cli_execute_command({ command: 'rm -f .git-credentials' }); } catch (e) {}
 
         // Attempt the merge without committing
         cli_execute_command({ command: 'git merge origin/' + baseBranch + ' --no-commit --no-ff' });
@@ -411,28 +396,20 @@ function detectMergeConflicts(baseBranch, inputFolder) {
             });
             console.warn('⚠️ Merge conflicts in ' + conflictFiles.length + ' file(s):', conflictFiles.join(', '));
 
-            // Auto-resolve conflicts by accepting the PR branch version (--ours).
-            // The PR branch contains the feature being worked on; base branch has
-            // unrelated changes from other merged PRs. Agent can adjust if needed.
-            for (var i = 0; i < conflictFiles.length; i++) {
-                try {
-                    cli_execute_command({ command: 'git checkout --ours ' + conflictFiles[i] });
-                    cli_execute_command({ command: 'git add ' + conflictFiles[i] });
-                } catch (resolveErr) {
-                    console.warn('Could not auto-resolve conflict in ' + conflictFiles[i] + ':', resolveErr);
-                }
-            }
-            console.log('✅ Auto-resolved ' + conflictFiles.length + ' conflict(s) with --ours');
-
-            var md = '# Merge Conflicts — Auto-Resolved\n\n';
-            md += 'This branch had conflicts with `' + baseBranch + '`. ';
-            md += conflictFiles.length + ' file(s) were auto-resolved by keeping the PR branch version:\n\n';
+            var md = '# ⚠️ Merge Conflicts — Resolve Before Rework\n\n';
+            md += 'This branch has conflicts with `' + baseBranch + '`. ';
+            md += conflictFiles.length + ' file(s) contain conflict markers:\n\n';
             conflictFiles.forEach(function(f) { md += '- `' + f + '`\n'; });
-            md += '\nThe AI should verify the resolved files are correct and adjust if base branch changes are needed.\n';
+            md += '\n## Resolution Steps\n\n';
+            md += '1. Open each conflicting file and resolve the `<<<<<<<` / `=======` / `>>>>>>>` markers\n';
+            md += '2. Stage each resolved file: `git add <file>`\n';
+            md += '3. Once all conflicts are resolved, proceed with fixes from `pr_discussions.md`\n\n';
+            md += '**Do NOT run `git commit` or `git merge --abort`** — the commit and push are handled automatically.\n';
 
             file_write({ path: inputFolder + '/merge_conflicts.md', content: md });
             console.log('✅ Wrote merge_conflicts.md');
 
+            // Leave the working directory in the conflicted merge state so the agent can resolve it
             return conflictFiles;
 
         } catch (statusError) {
@@ -619,24 +596,63 @@ function detectMultiTicketPRs(owner, repo, baseRef, headRef, ticketKey) {
     try {
         console.log('Checking for multi-ticket PR commits...');
 
-        // Use git log to find commits between base and head
-        var logOutput = cleanCommandOutput(
-            cli_execute_command({ command: 'git log origin/' + baseRef + '...' + headRef + ' --oneline --no-merges' }) || ''
-        );
+        // Get PR commits via MCP
+        var rawCommits = github_get_pr_commits
+            ? github_get_pr_commits({
+                workspace: owner,
+                repository: repo,
+                pullRequestId: String(headRef)
+            })
+            : null;
 
-        if (!logOutput) {
-            console.log('No commits found for multi-ticket check');
-            return [];
+        if (!rawCommits) {
+            // Fallback: use git log on the branch
+            var logOutput = cleanCommandOutput(
+                cli_execute_command({ command: 'git log origin/' + baseRef + '...' + headRef + ' --oneline --no-merges' }) || ''
+            );
+
+            if (!logOutput) {
+                console.log('No commits found for multi-ticket check');
+                return [];
+            }
+
+            // Extract ticket keys from commit messages (pattern: MAJESENS-XXX or JD-XXX)
+            var ticketKeyPattern = /(MAJESENS-\d+|JD-\d+)/g;
+            var foundKeys = {};
+            var lines = logOutput.split('\n');
+
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i];
+                var matches = line.match(ticketKeyPattern);
+                if (matches) {
+                    for (var j = 0; j < matches.length; j++) {
+                        if (matches[j] !== ticketKey) {
+                            foundKeys[matches[j]] = true;
+                        }
+                    }
+                }
+            }
+
+            var otherKeys = Object.keys(foundKeys);
+            if (otherKeys.length > 0) {
+                console.warn('⚠️ Multi-ticket PR detected:', otherKeys.join(', '));
+            } else {
+                console.log('✅ Single-ticket PR confirmed');
+            }
+            return otherKeys;
         }
 
-        // Extract ticket keys from commit messages (pattern: MAJESENS-XXX or JD-XXX)
+        // Parse MCP response
+        var commits = typeof rawCommits === 'string' ? JSON.parse(rawCommits) : rawCommits;
+        var commitList = Array.isArray(commits) ? commits
+            : (commits && commits.commits ? commits.commits : []);
+
         var ticketKeyPattern = /(MAJESENS-\d+|JD-\d+)/g;
         var foundKeys = {};
-        var lines = logOutput.split('\n');
 
-        for (var i = 0; i < lines.length; i++) {
-            var line = lines[i];
-            var matches = line.match(ticketKeyPattern);
+        for (var i = 0; i < commitList.length; i++) {
+            var msg = commitList[i].commit && commitList[i].commit.message ? commitList[i].commit.message : '';
+            var matches = msg.match(ticketKeyPattern);
             if (matches) {
                 for (var j = 0; j < matches.length; j++) {
                     if (matches[j] !== ticketKey) {
