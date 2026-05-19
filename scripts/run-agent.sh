@@ -155,27 +155,27 @@ elif [ "$PROVIDER" = "cline" ]; then
   CMD=(cline -y "$PROMPT")
 
 elif [ "$PROVIDER" = "claude" ]; then
-  # DEBUG: write execution evidence to file
+  # DEBUG: write execution evidence to stdout
   mkdir -p /workspace/outputs 2>/dev/null || true
-  echo "run-agent.sh: claude provider activated at $(date -u +%Y-%m-%dT%H:%M:%SZ)" > /workspace/outputs/debug_run.log
-  echo "PROMPT_ARG=${PROMPT_ARG}" >> /workspace/outputs/debug_run.log
-  echo "PROVIDER=${PROVIDER}" >> /workspace/outputs/debug_run.log
+  echo "run-agent.sh: claude provider activated at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "PROMPT_ARG=${PROMPT_ARG}"
+  echo "PROVIDER=${PROVIDER}"
 
   if ! command -v claude >/dev/null 2>&1; then
     echo "Error: claude not found in PATH" >&2
-    echo "claude binary: NOT FOUND" >> /workspace/outputs/debug_run.log
+    echo "claude binary: NOT FOUND"
     exit 127
   fi
-  echo "claude binary: $(which claude)" >> /workspace/outputs/debug_run.log
-  echo "claude version: $(claude --version 2>&1)" >> /workspace/outputs/debug_run.log
-  echo "CLAUDE_CODE_API_KEY: ${CLAUDE_CODE_API_KEY:+set (length=${#CLAUDE_CODE_API_KEY})}" >> /workspace/outputs/debug_run.log
-  echo "ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-not set}" >> /workspace/outputs/debug_run.log
-  echo "pwd: $(pwd)" >> /workspace/outputs/debug_run.log
+  echo "claude binary: $(which claude)"
+  echo "claude version: $(claude --version 2>&1)"
+  echo "CLAUDE_CODE_API_KEY: ${CLAUDE_CODE_API_KEY:+set (length=${#CLAUDE_CODE_API_KEY})}"
+  echo "ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-not set}"
+  echo "pwd: $(pwd)"
 
   # AI_AGENT is the standardized provider selector (anthropic, dial, gemini, etc.)
   # DEFAULT_LLM is kept for backward compatibility
   RAW_MODEL="${AI_AGENT:-$DEFAULT_LLM}"
-  echo "RAW_MODEL=${RAW_MODEL}" >> /workspace/outputs/debug_run.log
+  echo "RAW_MODEL=${RAW_MODEL}"
 
   # Map provider names to actual model IDs using provider-specific *_MODEL variables
   if [ "$RAW_MODEL" = "anthropic" ]; then
@@ -239,16 +239,9 @@ echo ""
 echo "Running: ${CMD[*]}"
 echo ""
 
-# DEBUG: log command before execution
-echo "EXEC_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> /workspace/outputs/debug_run.log 2>/dev/null || true
-echo "CMD=${CMD[*]}" >> /workspace/outputs/debug_run.log 2>/dev/null || true
-
-# Execute Command, tee output to debug file
-"${CMD[@]}" 2>&1 | tee -a /workspace/outputs/debug_run.log 2>/dev/null
-exit_code=${PIPESTATUS[0]}
-
-# DEBUG: log exit code
-echo "EXEC_END=$(date -u +%Y-%m-%dT%H:%M:%SZ) exit_code=$exit_code" >> /workspace/outputs/debug_run.log 2>/dev/null || true
+# Execute Command — output goes to stdout (visible in job log)
+"${CMD[@]}"
+exit_code=$?
 
 # Cleanup temp file if created
 if [ -n "${PROMPT_FILE:-}" ] && [ -f "$PROMPT_FILE" ]; then
