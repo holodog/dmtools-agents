@@ -60,6 +60,9 @@ fi
 # When cliPrompt is used, DMTools passes the prompt as a temp file path — read it if so.
 PROMPT_ARG="${!#}"
 
+# Ensure outputs dir exists for debug logging
+mkdir -p /workspace/outputs 2>/dev/null || true
+
 if [ -f "$PROMPT_ARG" ]; then
   PROMPT="$(cat "$PROMPT_ARG")"
 else
@@ -152,10 +155,22 @@ elif [ "$PROVIDER" = "cline" ]; then
   CMD=(cline -y "$PROMPT")
 
 elif [ "$PROVIDER" = "claude" ]; then
+  # DEBUG: write execution evidence to file
+  echo "run-agent.sh: claude provider activated at $(date -u +%Y-%m-%dT%H:%M:%SZ)" > /workspace/outputs/debug_run.log
+  echo "PROMPT_ARG=${PROMPT_ARG}" >> /workspace/outputs/debug_run.log
+  echo "PROVIDER=${PROVIDER}" >> /workspace/outputs/debug_run.log
+  echo "RAW_MODEL=${RAW_MODEL}" >> /workspace/outputs/debug_run.log
+
   if ! command -v claude >/dev/null 2>&1; then
     echo "Error: claude not found in PATH" >&2
+    echo "claude binary: NOT FOUND" >> /workspace/outputs/debug_run.log
     exit 127
   fi
+  echo "claude binary: $(which claude)" >> /workspace/outputs/debug_run.log
+  echo "claude version: $(claude --version 2>&1)" >> /workspace/outputs/debug_run.log
+  echo "CLAUDE_CODE_API_KEY: ${CLAUDE_CODE_API_KEY:+set (length=${#CLAUDE_CODE_API_KEY})}" >> /workspace/outputs/debug_run.log
+  echo "ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-not set}" >> /workspace/outputs/debug_run.log
+  echo "pwd: $(pwd)" >> /workspace/outputs/debug_run.log
 
   # AI_AGENT is the standardized provider selector (anthropic, dial, gemini, etc.)
   # DEFAULT_LLM is kept for backward compatibility
@@ -223,10 +238,16 @@ echo ""
 echo "Running: ${CMD[*]}"
 echo ""
 
-# Execute Command
-"${CMD[@]}"
+# DEBUG: log command before execution
+echo "EXEC_START=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> /workspace/outputs/debug_run.log 2>/dev/null || true
+echo "CMD=${CMD[*]}" >> /workspace/outputs/debug_run.log 2>/dev/null || true
 
-exit_code=$?
+# Execute Command, tee output to debug file
+"${CMD[@]}" 2>&1 | tee -a /workspace/outputs/debug_run.log 2>/dev/null
+exit_code=${PIPESTATUS[0]}
+
+# DEBUG: log exit code
+echo "EXEC_END=$(date -u +%Y-%m-%dT%H:%M:%SZ) exit_code=$exit_code" >> /workspace/outputs/debug_run.log 2>/dev/null || true
 
 # Cleanup temp file if created
 if [ -n "${PROMPT_FILE:-}" ] && [ -f "$PROMPT_FILE" ]; then
