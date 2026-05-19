@@ -196,13 +196,10 @@ elif [ "$PROVIDER" = "claude" ]; then
   PROMPT_FILE=$(mktemp)
   echo "$PROMPT" > "$PROMPT_FILE"
 
-  # Use --print without --bare — bare mode sets CLAUDE_CODE_SIMPLE=1 which may
-  # disable tool_use for non-Claude models. --print still prints response and exits.
-  # The container creates /tmp/.claude/settings.json for auth config.
   if [ ${#PASS_ARGS[@]} -eq 0 ]; then
-    CMD=(claude --print --model "$MODEL" --max-turns 50 --dangerously-skip-permissions -p "$PROMPT_FILE")
+    CMD=(claude --bare --model "$MODEL" --max-turns 50 --dangerously-skip-permissions -p "$PROMPT_FILE")
   else
-    CMD=(claude --print --model "$MODEL" "${PASS_ARGS[@]}" --max-turns 50 --dangerously-skip-permissions -p "$PROMPT_FILE")
+    CMD=(claude --bare --model "$MODEL" "${PASS_ARGS[@]}" --max-turns 50 --dangerously-skip-permissions -p "$PROMPT_FILE")
   fi
 
 else

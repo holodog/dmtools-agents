@@ -17,9 +17,9 @@ The feature code is **already implemented** in the `main` branch and **deployed*
 1. Analyze the Test Case: understand what needs to be verified, what type it is (web, mobile, API), and which framework fits best.
 2. Check `e2e/fixtures/` and `e2e/helpers/` for existing components and utilities you can reuse.
 3. **Check if test already exists** in `e2e/tests/`. If it does, reuse and update it rather than rewriting from scratch. Only modify what is necessary.
-4. **Write the actual test code** — a REAL test file with test functions and assertions, NOT just documentation:
-   - **Go backend (ms_back)**: write `services/<service>/e2e/<feature>_e2e_test.go` with a proper `func TestMAJESENS_XXX(t *testing.T)` containing httptest requests and assertions. See `agents/instructions/test_automation/new_test_automation_instructions.md` for the Go httptest template.
-   - **Playwright frontend (ms_front)**: write `e2e/tests/test_{ticket_key}.spec.ts` with actual Playwright test cases.
+4. **Write the actual test code to disk** — use the **Write tool** to create REAL test files on disk with test functions and assertions, NOT just documentation:
+   - **Go backend (ms_back)**: use the Write tool to create `services/<service>/e2e/<feature>_e2e_test.go` with a proper `func TestMAJESENS_XXX(t *testing.T)` containing httptest requests and assertions. See `agents/instructions/test_automation/new_test_automation_instructions.md` for the Go httptest template.
+   - **Playwright frontend (ms_front)**: use the Write tool to create `e2e/tests/test_{ticket_key}.spec.ts` with actual Playwright test cases.
 5. Write output files describing **what test code was written**. **Do NOT report pass/fail results** — tests have not been run yet. GitHub Actions CI will run them after the PR is created.
 
 You may write code in these locations:
