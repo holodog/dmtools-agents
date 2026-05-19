@@ -140,6 +140,14 @@
           "localExecution": true
         },
         {
+          "description": "CI Pending Test Cases → check CI status",
+          "jql": "project = MYTUBE AND issuetype in ('Test Case') AND status in ('CI Pending')",
+          "configFile": "agents/new_test_ci_check.json",
+          "skipIfLabel": "new_sm_ci_check_triggered",
+          "addLabel": "new_sm_ci_check_triggered",
+          "localExecution": true
+        },
+        {
           "description": "Backlog Test Cases → In Development + automate",
           "jql": "project = MYTUBE AND issuetype in ('Test Case') AND status in ('Backlog')",
           "targetStatus": "In Development",
