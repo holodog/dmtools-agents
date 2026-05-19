@@ -166,8 +166,9 @@ elif [ "$PROVIDER" = "claude" ]; then
     # Use ANTHROPIC_MODEL if set, otherwise default to claude-sonnet-4-20250514
     MODEL="${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}"
   elif [ "$RAW_MODEL" = "dial" ]; then
-    # Use DIAL_MODEL if set, otherwise default to gpt-4
-    MODEL="${DIAL_MODEL:-gpt-4}"
+    # Use DIAL_MODEL if set, otherwise fall back to ANTHROPIC_MODEL (DashScope proxy)
+    # gpt-4 is not a valid model for Anthropic-compatible proxy endpoints
+    MODEL="${DIAL_MODEL:-${ANTHROPIC_MODEL:-gpt-4}}"
   elif [ "$RAW_MODEL" = "gemini" ]; then
     # Use GEMINI_MODEL if set, otherwise default to gemini-2.0-flash
     MODEL="${GEMINI_MODEL:-gemini-2.0-flash}"
