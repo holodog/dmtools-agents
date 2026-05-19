@@ -22,10 +22,11 @@
     "ticketContextDepth": 1,
     "attachResponseAsFile": false,
     "cleanupInputFolder": false,
-    "skipAIProcessing": false,
+    "skipAIProcessing": true,
     "alwaysPostComments": true,
     "envVariables": {
-      "CLI_ALLOWED_COMMANDS": "find,ls,cat,mkdir,bash,pytest,python3,pip3,run-agent.sh"
+      "CLI_ALLOWED_COMMANDS": "find,ls,cat,mkdir,bash,pytest,python3,pip3,run-agent.sh",
+      "AI_AGENT_PROVIDER": "claude"
     },
     "customParams": {
       "removeLabel": "sm_test_automation_triggered"
