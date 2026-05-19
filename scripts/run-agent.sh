@@ -156,10 +156,10 @@ elif [ "$PROVIDER" = "cline" ]; then
 
 elif [ "$PROVIDER" = "claude" ]; then
   # DEBUG: write execution evidence to file
+  mkdir -p /workspace/outputs 2>/dev/null || true
   echo "run-agent.sh: claude provider activated at $(date -u +%Y-%m-%dT%H:%M:%SZ)" > /workspace/outputs/debug_run.log
   echo "PROMPT_ARG=${PROMPT_ARG}" >> /workspace/outputs/debug_run.log
   echo "PROVIDER=${PROVIDER}" >> /workspace/outputs/debug_run.log
-  echo "RAW_MODEL=${RAW_MODEL}" >> /workspace/outputs/debug_run.log
 
   if ! command -v claude >/dev/null 2>&1; then
     echo "Error: claude not found in PATH" >&2
@@ -175,6 +175,7 @@ elif [ "$PROVIDER" = "claude" ]; then
   # AI_AGENT is the standardized provider selector (anthropic, dial, gemini, etc.)
   # DEFAULT_LLM is kept for backward compatibility
   RAW_MODEL="${AI_AGENT:-$DEFAULT_LLM}"
+  echo "RAW_MODEL=${RAW_MODEL}" >> /workspace/outputs/debug_run.log
 
   # Map provider names to actual model IDs using provider-specific *_MODEL variables
   if [ "$RAW_MODEL" = "anthropic" ]; then
