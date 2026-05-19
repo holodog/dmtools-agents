@@ -177,6 +177,9 @@ elif [ "$PROVIDER" = "claude" ]; then
   elif [ -n "$RAW_MODEL" ]; then
     # Use as-is (might already be a valid model ID like claude-opus-4-6)
     MODEL="$RAW_MODEL"
+  elif [ -n "${ANTHROPIC_MODEL:-}" ]; then
+    # Fallback to ANTHROPIC_MODEL when provider vars are unset
+    MODEL="$ANTHROPIC_MODEL"
   else
     # No provider specified, use default
     MODEL="kimi-k2.5"
