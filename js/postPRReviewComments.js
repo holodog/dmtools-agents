@@ -542,7 +542,16 @@ function action(params) {
 
         // Normalize: LLM sometimes returns "APPROVED" instead of "APPROVE"
         const recommendation = (reviewData.recommendation || reviewData.verdict || 'REQUEST_CHANGES').replace(/^APPROVED$/, 'APPROVE');
-        const isApproved = recommendation === 'APPROVE';
+
+        // Block approval when AI returned open issues — prevents approving code with known problems
+        const issueCounts = reviewData.issueCounts || { blocking: 0, important: 0, suggestions: 0 };
+        const hasOpenIssues = (issueCounts.blocking || 0) > 0 || (issueCounts.important || 0) > 0 || (issueCounts.suggestions || 0) > 0;
+        const isApproved = recommendation === 'APPROVE' && !hasOpenIssues;
+
+        if (recommendation === 'APPROVE' && hasOpenIssues) {
+            console.warn('⚠️ Agent returned APPROVE but there are open issues (blocking=' + issueCounts.blocking + ', important=' + issueCounts.important + ', suggestions=' + issueCounts.suggestions + '). Overriding to REQUEST_CHANGES.');
+        }
+
         let merged = false;
 
         // Step 4: Post all comments to GitHub PR (always, regardless of outcome)

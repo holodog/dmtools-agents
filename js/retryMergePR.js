@@ -179,10 +179,26 @@ function action(params) {
         console.warn('Could not get PR details, will attempt merge anyway:', e);
     }
 
-    // GitHub hasn't computed mergeability yet, or CI checks still running — retry next cycle
-    if (mergeable === null || mergeableState === 'unknown' || mergeableState === 'blocked' || mergeableState === 'unstable') {
-        console.log('PR not ready to merge (' + mergeableState + ') — will retry next cycle');
+    // GitHub hasn't computed mergeability yet — retry next cycle
+    if (mergeable === null || mergeableState === 'unknown') {
+        console.log('PR mergeability unknown (' + mergeableState + ') — will retry next cycle');
         return false;
+    }
+
+    // CI checks failing — move ticket to In Rework for fixes
+    if (mergeableState === 'blocked' || mergeableState === 'unstable') {
+        console.log('PR CI checks failing (' + mergeableState + ') — moving ticket to In Rework');
+        removeApprovedLabels(owner, repo, prNumber, ticketKey);
+        releaseLock(ticketKey, params);
+        try {
+            jira_post_comment({
+                key: ticketKey,
+                comment: '{panel:bgColor=#FFEBE6|borderColor=#DE350B}⚠️ *CI BLOCKED* — PR #' + prNumber + ' has failing CI checks. Please fix the build failures and re-push.\n\n[View PR|' + prUrl + ']{panel}'
+            });
+        } catch (e) { console.warn('Could not post Jira comment:', e); }
+        jira_move_to_status({ key: ticketKey, statusName: STATUSES.IN_REWORK });
+        console.log('✅ Ticket moved to In Rework (CI checks failing)');
+        return true;
     }
 
     // PR branch is behind base — update it so CI can re-run, then retry next cycle
