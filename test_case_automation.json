@@ -33,7 +33,7 @@
     },
     "preJSAction": "agents/js/checkWipLabel.js",
     "preCliJSAction": "agents/js/preCliTestAutomationSetup.js",
-    "postJSAction": "agents/js/postNewTestAutomationResults.js",
+    "postJSAction": "agents/js/postTestAutomationResults.js",
     "inputJql": "key = JD-111"
   }
 }
