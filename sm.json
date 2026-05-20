@@ -149,7 +149,7 @@
         },
         {
           "description": "Backlog Test Cases → In Development + automate",
-          "jql": "project = MYTUBE AND issuetype in ('Test Case') AND status in ('Backlog')",
+          "jql": "project = MYTUBE AND issuetype in ('Test Case') AND status in ('Backlog') AND labels NOT IN ('sm_test_automation_wrong_repo')",
           "targetStatus": "In Development",
           "configFile": "agents/test_case_automation.json",
           "skipIfLabel": "sm_test_automation_triggered",
