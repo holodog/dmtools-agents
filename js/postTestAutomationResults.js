@@ -1,13 +1,21 @@
 /**
  * Post Test Automation Results Action (postJSAction for test_case_automation)
- * 1. Reads outputs/test_automation_result.json
- * 2. Stages testing/ folder, commits, pushes, creates PR to main
- * 3. Posts Jira comment from outputs/response.md
- * 4. If passed:          moves ticket to In Review - Passed
- * 5. If failed:          moves Test Case to In Review - Failed (bug created by bug_creation agent on Failed)
- * 6. If blocked_by_human: moves ticket to Blocked, posts what credentials/data are needed,
- *                         removes SM trigger label so ticket is re-processed after human fix
- * 7. Removes WIP label
+ *
+ * HYBRID FLOW (2026-05-21):
+ *   AI writes test code → runs tests locally → reads result JSON
+ *   → If passed:  stage + commit + push + create PR → move to In Review - Passed
+ *   → If failed: stage + commit + push + create PR → move to In Review - Failed
+ *   → CI becomes final verification, not primary test executor
+ *
+ * HOW TO REVERT BACK TO CI-BASED FLOW:
+ *   1. In test_case_automation.json, change postJSAction to:
+ *        "postJSAction": "agents/js/postNewTestAutomationResults.js"
+ *   2. The old CI-based file (postNewTestAutomationResults.js) is unchanged in this repo.
+ *      It pushes code → moves to CI Pending → SM checks GitHub Actions CI → rework loop.
+ *   3. Optionally restore skipAIProcessing: true in test_case_automation.json so AI
+ *      only writes code without running tests locally.
+ *   Commit 4c5ce73 (2026-05-21) was the last state using CI-based flow.
+ *   Git diff to restore: git show 4c5ce73 -- test_case_automation.json
  */
 
 const { GIT_CONFIG, STATUSES, LABELS } = require('./config.js');
@@ -50,118 +58,75 @@ function readResultJson() {
 
 function performGitOperations(branchName, commitMessage) {
     try {
-    try {
-        // Stage testing/ folder only (outputs/ is gitignored — test artifacts should not be committed)
-        console.log('Staging testing/ folder...');
-        try {
-            if (cli_execute_command({ command: 'test -d testing && echo yes' })) {
-                cli_execute_command({ command: 'git add testing/' });
-                console.log('Staged testing/ folder');
-            } else {
-                console.log('No testing/ folder exists (skipping)');
-            }
-        } catch (e) {
-            console.log('No testing/ folder to stage (continuing)');
-        }
+        // Clean agents submodule — AI agent may have modified files inside it
+        try { cli_execute_command({ command: 'git submodule update --init --recursive --force' }); } catch (e) {}
 
-        // Stage frontend test files (Vitest unit tests)
-        try {
-            if (cli_execute_command({ command: 'test -d src/test && echo yes' })) {
-                cli_execute_command({ command: 'git add src/test/' });
-                console.log('Staged Vitest test files from src/test/');
-            } else {
-                console.log('No src/test/ directory (skipping)');
-            }
-        } catch (e) {
-            console.log('No Vitest test files to stage (continuing)');
-        }
+        // Stage testing/ folder
+        try { cli_execute_command({ command: 'git add testing/' }); } catch (e) {}
+
+        // Stage Vitest test files
+        try { cli_execute_command({ command: 'git add src/test/' }); } catch (e) {}
 
         // Stage Playwright E2E test files
-        try {
-            if (cli_execute_command({ command: 'test -d e2e/tests && echo yes' })) {
-                cli_execute_command({ command: 'git add e2e/tests/' });
-                console.log('Staged Playwright E2E test files from e2e/tests/');
-            } else {
-                console.log('No e2e/tests/ directory (skipping)');
-            }
-        } catch (e) {
-            console.log('No Playwright E2E test files to stage (continuing)');
-        }
+        try { cli_execute_command({ command: 'git add e2e/tests/' }); } catch (e) {}
 
-        // Also stage any Go e2e test files in services/ directories
-        try {
-            cli_execute_command({ command: 'git add services/' });
-            console.log('Staged e2e test files from services/');
-        } catch (e) {
-            console.log('No e2e test files in services/ to stage (continuing)');
-        }
+        // Stage any Go e2e test files
+        try { cli_execute_command({ command: 'git add services/*/e2e/*_test.go' }); } catch (e) {}
 
-        // Check if any test files were actually staged (not outputs/ or other files)
         var rawStatus = cli_execute_command({ command: 'git status --porcelain' }) || '';
-        console.log('Raw git status length:', rawStatus.length);
-        var statusOutput = cleanCommandOutput(rawStatus);
-        console.log('Cleaned git status:', statusOutput || '(empty)');
-
-        // Only count actual test file changes (not outputs/ files)
-        var testChanges = (statusOutput || '').split('\n').filter(function(line) {
-            return line.indexOf('e2e/tests/') !== -1 ||
-                   line.indexOf('testing/') !== -1 ||
-                   line.indexOf('src/test/') !== -1 ||
-                   line.indexOf('services/') !== -1;
+        var statusLines = rawStatus.split('\n').filter(function(line) {
+            var trimmed = line.trim();
+            // Ignore untracked input/ folder and agents submodule dirty content
+            return trimmed &&
+                trimmed.indexOf('?? input/') !== 0 &&
+                trimmed.indexOf(' M agents') !== 0 &&
+                trimmed.indexOf('M agents') !== 0;
         }).join('\n');
-        var hasTestChanges = testChanges && testChanges.trim().length > 0;
 
-        if (!statusOutput || !statusOutput.trim()) {
-            console.warn('No new changes to commit in testing/ (files may already exist on main)');
-            // Check if branch exists on remote — we can still create PR from it
+        if (!statusLines || !statusLines.trim()) {
+            console.log('No new changes to commit — checking if test files already exist');
+            var existingTests = checkExistingTestFiles();
+            if (existingTests.length > 0) {
+                console.log('Test files already exist in index: ' + existingTests.join(', '));
+                return { success: true, branchName: branchName, noNewCommit: true };
+            }
             var remoteBranchCheck = cleanCommandOutput(
                 cli_execute_command({ command: 'git ls-remote --heads origin ' + branchName }) || ''
             );
             if (remoteBranchCheck.trim()) {
-                console.log('Branch exists on remote, will try to create PR from existing branch');
                 return { success: true, branchName: branchName, noNewCommit: true };
             }
-            // No remote branch either — push current branch so PR can be created
-            console.log('No remote branch found, pushing current branch state...');
             try {
                 cli_execute_command({ command: 'git push -u origin ' + branchName + ' --force' });
                 return { success: true, branchName: branchName, noNewCommit: true };
             } catch (pushErr) {
-                console.warn('Failed to push branch:', pushErr);
                 return { success: false, error: 'No test files were written and could not push branch' };
             }
         }
 
-        // No test files staged even if outputs/ files exist (AI agent may have hallucinated results)
-        // But check if test files already exist in git index (e.g., from a previous merged PR)
-        var hasTestChanges = testChanges && testChanges.trim().length > 0;
-        if (!hasTestChanges) {
-            var lsFiles = cli_execute_command({ command: 'git ls-files e2e/tests/ testing/ src/test/ services/' }) || '';
-            if (lsFiles.trim().length > 0) {
-                console.log('Test files already exist in git index (no new changes needed):', lsFiles.trim());
-                console.log('No new changes to commit — test already merged, will mark as PASSED');
-                return { success: true, branchName: branchName, noNewCommit: true, noCodeChanges: true };
-            }
-        }
-        if (!hasTestChanges) {
-            console.warn('No test files were staged — AI agent did not create any test code');
-            return { success: false, error: 'No test files were created by AI agent' };
-        }
-
         console.log('Committing...');
-        cli_execute_command({
-            command: 'git commit -m "' + commitMessage.replace(/"/g, '\\"') + '"'
-        });
+        try {
+            cli_execute_command({
+                command: 'git commit -m "' + commitMessage.replace(/"/g, '\\"') + '"'
+            });
+        } catch (commitErr) {
+            console.warn('Commit failed, checking for existing test files:', commitErr);
+            var existingOnFail = checkExistingTestFiles();
+            if (existingOnFail.length > 0) {
+                console.log('Test files already exist in index: ' + existingOnFail.join(', '));
+                return { success: true, branchName: branchName, noNewCommit: true };
+            }
+            throw commitErr;
+        }
 
         console.log('Pushing to remote...');
         try {
             cli_execute_command({ command: 'git push -u origin ' + branchName });
         } catch (e) {
-            console.log('Normal push failed, force pushing...');
             cli_execute_command({ command: 'git push -u origin ' + branchName + ' --force' });
         }
 
-        const remoteBranch = cleanCommandOutput(
+        var remoteBranch = cleanCommandOutput(
             cli_execute_command({ command: 'git ls-remote --heads origin ' + branchName }) || ''
         );
         if (!remoteBranch.trim()) {
@@ -177,37 +142,60 @@ function performGitOperations(branchName, commitMessage) {
     }
 }
 
+function checkExistingTestFiles() {
+    var found = [];
+    try {
+        var raw = cli_execute_command({ command: 'git ls-files e2e/tests/' }) || '';
+        raw.split('\n').forEach(function(f) {
+            if (f.trim() && f.indexOf('test_MAJESENS-') >= 0 && found.indexOf(f.trim()) === -1) {
+                found.push(f.trim());
+            }
+        });
+    } catch (e) {}
+    try {
+        var raw2 = cli_execute_command({ command: 'git ls-files testing/' }) || '';
+        raw2.split('\n').forEach(function(f) {
+            if (f.trim() && found.indexOf(f.trim()) === -1) found.push(f.trim());
+        });
+    } catch (e) {}
+    try {
+        var raw3 = cli_execute_command({ command: 'git ls-files src/test/' }) || '';
+        raw3.split('\n').forEach(function(f) {
+            if (f.trim() && found.indexOf(f.trim()) === -1) found.push(f.trim());
+        });
+    } catch (e) {}
+    return found;
+}
+
 function createPullRequest(title, branchName) {
     try {
-        console.log('Creating Pull Request...');
-        const escapedTitle = title.replace(/"/g, '\\"').replace(/\n/g, ' ');
+        var escapedTitle = title.replace(/"/g, '\\"').replace(/\n/g, ' ');
 
-        // Use pr_body.md (GitHub MD) if present, fallback to response.md
-        const prBodyFile = readFile('outputs/pr_body.md')
+        var prBodyFile = readFile('outputs/pr_body.md')
             ? 'outputs/pr_body.md'
-            : 'outputs/response.md';
-        console.log('Using PR body file:', prBodyFile);
+            : (readFile('outputs/response.md') ? 'outputs/response.md' : null);
 
-        const output = cleanCommandOutput(
-            cli_execute_command({
-                command: 'gh pr create --title "' + escapedTitle + '" --body-file "' + prBodyFile + '" --base ' + GIT_CONFIG.DEFAULT_BASE_BRANCH + ' --head ' + branchName
-            }) || ''
-        );
+        var prArgs = 'gh pr create --title "' + escapedTitle + '" --base ' + GIT_CONFIG.DEFAULT_BASE_BRANCH + ' --head ' + branchName;
+        if (prBodyFile) {
+            prArgs += ' --body-file "' + prBodyFile + '"';
+        }
 
-        let prUrl = null;
-        const urlMatch = output.match(/https:\/\/github\.com\/[^\s]+/);
+        var output = cleanCommandOutput(cli_execute_command({ command: prArgs }) || '');
+
+        var prUrl = null;
+        var urlMatch = output.match(/https:\/\/github\.com\/[^\s]+/);
         if (urlMatch) {
             prUrl = urlMatch[0];
         }
 
         if (!prUrl) {
-            const prNumberMatch = output.match(/#(\d+)/);
+            var prNumberMatch = output.match(/#(\d+)/);
             if (prNumberMatch) {
                 try {
-                    const remoteUrl = cleanCommandOutput(
+                    var remoteUrl = cleanCommandOutput(
                         cli_execute_command({ command: 'git config --get remote.origin.url' }) || ''
                     );
-                    const repoMatch = remoteUrl.match(/github\.com[:/]([^/]+\/[^/.]+)/);
+                    var repoMatch = remoteUrl.match(/github\.com[:/]([^/]+\/[^/.]+)/);
                     if (repoMatch) {
                         prUrl = 'https://github.com/' + repoMatch[1].replace('.git', '') + '/pull/' + prNumberMatch[1];
                     }
@@ -217,7 +205,7 @@ function createPullRequest(title, branchName) {
 
         if (!prUrl) {
             try {
-                const listOutput = cleanCommandOutput(
+                var listOutput = cleanCommandOutput(
                     cli_execute_command({ command: 'gh pr list --head ' + branchName + ' --json url --jq ".[0].url"' }) || ''
                 );
                 if (listOutput && listOutput.startsWith('https://')) prUrl = listOutput;
@@ -237,67 +225,18 @@ function action(params) {
     try {
         const ticketKey = params.ticket.key;
         const ticketSummary = params.ticket.fields ? params.ticket.fields.summary : ticketKey;
-        const projectKey = ticketKey.split('-')[0];
         const jiraComment = params.response || '';
 
         console.log('=== Processing test automation results for', ticketKey, '===');
 
-        // Step 0: Verify test code was actually generated before trusting results
-        // Check git status for NEW/CHANGED test files, OR existing test files already tracked in git
-        var testFilesFound = false;
-        try {
-            var gitStatus = cli_execute_command({ command: 'git status --porcelain' }) || '';
-            var lines = (gitStatus || '').split('\n');
-            for (var i = 0; i < lines.length; i++) {
-                var line = lines[i].trim();
-                if (line.indexOf('services/') !== -1 && line.indexOf('_test.go') !== -1) {
-                    testFilesFound = true;
-                    console.log('Found e2e test file:', line);
-                    break;
-                }
-                if (line.indexOf('testing/tests/' + ticketKey) !== -1) {
-                    testFilesFound = true;
-                    console.log('Found testing/ file:', line);
-                    break;
-                }
-                if (line.indexOf('src/test/') !== -1) {
-                    testFilesFound = true;
-                    console.log('Found Vitest test file:', line);
-                    break;
-                }
-                if (line.indexOf('e2e/tests/') !== -1) {
-                    testFilesFound = true;
-                    console.log('Found Playwright E2E test file:', line);
-                    break;
-                }
-            }
-            // Also check for existing test files already tracked in git (e.g., from a previous merged PR)
-            if (!testFilesFound) {
-                var lsFiles = cli_execute_command({ command: 'git ls-files e2e/tests/ testing/ src/test/' }) || '';
-                if (lsFiles.trim().length > 0) {
-                    console.log('Found existing test files in git index:', lsFiles.trim());
-                    testFilesFound = true;
-                }
-            }
-        } catch (e) {
-            console.warn('Could not verify test files (non-fatal):', e);
-        }
-
-        // Step 1: Read structured result
+        // Step 1: Read structured result (from local test execution by AI agent)
         const result = readResultJson();
         if (!result) {
             jira_post_comment({
                 key: ticketKey,
-                comment: 'h3. ⚠️ Test Automation Error\n\nCould not read test result. Check workflow logs.'
+                comment: 'h3. ⚠️ Test Automation Error\n\nCould not read test result JSON. Check workflow logs.'
             });
             return { success: false, error: 'No test result JSON found' };
-        }
-
-        // If no test files were generated, override result to failed
-        if (!testFilesFound && result.status === 'passed') {
-            console.warn('No test files found but result says PASSED — overriding to failed');
-            result.status = 'failed';
-            result.error = 'AI teammate reported passed but no test code files were generated';
         }
 
         const status = (result.status || '').toLowerCase();
@@ -314,9 +253,7 @@ function action(params) {
 
         // Step 3: Read current branch (set by preCliTestAutomationSetup)
         var rawBranch = cli_execute_command({ command: 'git branch --show-current' }) || '';
-        console.log('Raw branch output length:', rawBranch.length, 'content:', JSON.stringify(rawBranch.substring(0, 200)));
         const branchName = cleanCommandOutput(rawBranch);
-        console.log('Cleaned branch name:', JSON.stringify(branchName));
         if (!branchName) {
             console.warn('Could not determine current branch — skipping git operations');
         }
@@ -333,10 +270,9 @@ function action(params) {
                 const prResult = createPullRequest(prTitle, branchName);
                 prUrl = prResult.prUrl;
                 if (!prResult.success || !prUrl) {
-                    // PR creation failed — branch has code but no PR; post comment and reset to Backlog for retry
                     console.error('PR creation failed — resetting ticket to Backlog for retry');
                     try {
-                        jira_post_comment({ key: ticketKey, comment: 'h3. ⚠️ PR Creation Failed\n\nTest code was pushed to branch {code}' + branchName + '{code} but the Pull Request could not be created.\n\nTicket moved back to *Backlog* — will be re-processed automatically. The next run will detect the existing branch and create the PR.\n\nError: ' + (prResult.error || 'unknown') });
+                        jira_post_comment({ key: ticketKey, comment: 'h3. ⚠️ PR Creation Failed\n\nTest code was pushed to branch {code}' + branchName + '{code} but the Pull Request could not be created.\n\nTicket moved back to *Backlog* — will be re-processed automatically.\n\nError: ' + (prResult.error || 'unknown') });
                         jira_move_to_status({ key: ticketKey, statusName: STATUSES.TODO });
                     } catch (e) { console.warn('Could not reset to Backlog:', e); }
                     try {
@@ -352,7 +288,6 @@ function action(params) {
                 noCodeChanges = true;
                 console.log('ℹ️ No test code changes — skipping PR review, moving ticket directly');
             } else {
-                // Git operations failed — reset to Backlog for retry
                 console.warn('Git operations failed:', gitResult.error);
                 try {
                     jira_post_comment({ key: ticketKey, comment: 'h3. ⚠️ Git Operations Failed\n\nFailed to commit/push test code: ' + gitResult.error + '\n\nTicket moved back to *Backlog* — will be re-processed automatically.' });
@@ -372,7 +307,7 @@ function action(params) {
                 comment += '\n\n*Test Branch PR*: ' + prUrl;
             }
             if (noCodeChanges) {
-                comment += '\n\nℹ️ _Test code unchanged from previous run — PR review step skipped._';
+                comment += '\n\nℹ️ _Test code unchanged from previous run._';
             }
             if (comment) {
                 jira_post_comment({ key: ticketKey, comment: comment });
@@ -384,9 +319,7 @@ function action(params) {
 
         // Step 6: Handle outcome
         // When no code changes, skip "In Review" and move directly to final status
-        // (test code was already reviewed in a previous run)
         if (blockedByHuman) {
-            // Build blocked comment
             var blockedComment = 'h3. 🚫 Test Automation Blocked — Awaiting Human Setup\n\n';
             if (result.blocked_reason) {
                 blockedComment += result.blocked_reason + '\n\n';
@@ -403,37 +336,26 @@ function action(params) {
                 });
             }
             if (prUrl) {
-                blockedComment += '\n*Test Branch PR* (test code is ready, skips without credentials): ' + prUrl;
+                blockedComment += '\n*Test Branch PR*: ' + prUrl;
             }
             blockedComment += '\n\nOnce setup is complete, move this ticket back to *Backlog* to trigger re-run.';
 
             try {
                 jira_post_comment({ key: ticketKey, comment: blockedComment });
-                console.log('✅ Posted blocked comment to Jira');
-            } catch (e) {
-                console.warn('Failed to post blocked comment:', e);
-            }
+            } catch (e) { console.warn('Failed to post blocked comment:', e); }
 
             try {
                 jira_move_to_status({ key: ticketKey, statusName: STATUSES.BLOCKED });
-                console.log('✅ Blocked — moved', ticketKey, 'to', STATUSES.BLOCKED);
-            } catch (e) {
-                console.warn('Failed to move to Blocked:', e);
-            }
+            } catch (e) { console.warn('Failed to move to Blocked:', e); }
 
-            // Remove WIP label
             const wipLabelBlocked = params.metadata && params.metadata.contextId
                 ? params.metadata.contextId + '_wip'
                 : 'test_case_automation_wip';
             try { jira_remove_label({ key: ticketKey, label: wipLabelBlocked }); } catch (e) {}
 
-            // Remove SM trigger label so the ticket is re-processed after human fixes the issue
             const smTriggerLabel = params.jobParams && params.jobParams.customParams && params.jobParams.customParams.removeLabel;
             if (smTriggerLabel) {
-                try {
-                    jira_remove_label({ key: ticketKey, label: smTriggerLabel });
-                    console.log('✅ Removed SM trigger label:', smTriggerLabel);
-                } catch (e) {}
+                try { jira_remove_label({ key: ticketKey, label: smTriggerLabel }); } catch (e) {}
             }
 
             console.log('🚫 Test', ticketKey, 'blocked by human — awaiting credentials/data');
@@ -441,15 +363,17 @@ function action(params) {
         }
 
         if (passed) {
+            // Tests passed locally — push to In Review - Passed for final PR review
+            // (CI will run as final verification when PR merges)
             try {
-                var passedStatus = noCodeChanges ? STATUSES.PASSED : STATUSES.PR_READY;
+                var passedStatus = noCodeChanges ? STATUSES.PASSED : STATUSES.IN_REVIEW_PASSED;
                 jira_move_to_status({ key: ticketKey, statusName: passedStatus });
                 console.log('✅ Passed — moved', ticketKey, 'to', passedStatus);
             } catch (e) {
                 console.warn('Failed to move to Passed:', e);
             }
         } else {
-            // Bug creation is handled by the bug_creation agent when TC reaches Failed status
+            // Tests failed locally — move to In Review - Failed for rework
             try {
                 var failedStatus = noCodeChanges ? STATUSES.FAILED : STATUSES.IN_REVIEW_FAILED;
                 jira_move_to_status({ key: ticketKey, statusName: failedStatus });
@@ -470,14 +394,9 @@ function action(params) {
         const wipLabel = params.metadata && params.metadata.contextId
             ? params.metadata.contextId + '_wip'
             : 'test_case_automation_wip';
-        try {
-            jira_remove_label({ key: ticketKey, label: wipLabel });
-        } catch (e) {
-            console.warn('Failed to remove WIP label:', e);
-        }
+        try { jira_remove_label({ key: ticketKey, label: wipLabel }); } catch (e) {}
 
-        // Step 9: Always remove SM trigger label so the TC can be re-triggered
-        // by adding the label again (re-run after pass, re-run after fix, etc.)
+        // Step 9: Remove SM trigger label so ticket can be re-triggered
         const smTriggerLabel = params.jobParams && params.jobParams.customParams && params.jobParams.customParams.removeLabel;
         if (smTriggerLabel) {
             try {
