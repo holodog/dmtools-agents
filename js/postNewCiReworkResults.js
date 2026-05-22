@@ -72,20 +72,28 @@ function action(params) {
 
         console.log('Current branch:', branchName);
 
-        // Step 3: Stage test files
+        // Stage test files
         try { cli_execute_command({ command: 'git add e2e/tests/' }); } catch (e) {}
         try { cli_execute_command({ command: 'git add e2e/fixtures/' }); } catch (e) {}
         try { cli_execute_command({ command: 'git add e2e/helpers/' }); } catch (e) {}
         try { cli_execute_command({ command: 'git add services/*/e2e/*_test.go' }); } catch (e) {}
         try { cli_execute_command({ command: 'git add testing/' }); } catch (e) {}
         try { cli_execute_command({ command: 'git add src/test/' }); } catch (e) {}
+        // Stage AI output files (response.md, pr_body.md, test_automation_result.json)
+        try { cli_execute_command({ command: 'git add outputs/' }); } catch (e) {}
 
         // Step 4: Check if there are changes
-        const statusOutput = cleanCommandOutput(
-            cli_execute_command({ command: 'git status --porcelain' }) || ''
-        );
+        const rawStatus = cli_execute_command({ command: 'git status --porcelain' }) || '';
+        const statusOutput = cleanCommandOutput(rawStatus);
+        const statusLines = statusOutput.split('\n').filter(function(line) {
+            var trimmed = line.trim();
+            return trimmed &&
+                trimmed.indexOf('?? input/') !== 0 &&
+                trimmed.indexOf(' M agents') !== 0 &&
+                trimmed.indexOf('M agents') !== 0;
+        }).join('\n');
 
-        if (statusOutput.trim()) {
+        if (statusLines.trim()) {
             cli_execute_command({
                 command: 'git commit -m "' + ticketKey + ' test fix: address CI failure"'
             });

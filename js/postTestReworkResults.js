@@ -1,13 +1,22 @@
 /**
  * Post Test Rework Results Action (postJSAction for pr_test_automation_rework)
- * After cursor agent fixes test issues and re-runs the test:
- * 1. Reads outputs/test_automation_result.json (new test result after fixes)
- * 2. Stages testing/ folder, commits, force-pushes to existing PR branch
- * 3. Replies to and resolves PR review threads (from outputs/review_replies.json)
- * 4. Posts PR comment with fix summary
- * 5. If test passed  → moves to In Review - Passed
- * 6. If test failed  → moves to In Review - Failed (bug may have changed)
- * 7. Posts Jira comment, removes WIP label
+ *
+ * Rework flow:
+ *   AI reads ci_failures.md → fixes test code → runs tests locally → writes test_automation_result.json
+ *   → If passed:  stage test files + commit + push to existing PR → move to In Review - Passed
+ *   → If failed: stage test files + commit + push to existing PR → move to In Review - Failed
+ *
+ * DIFFERS from postTestAutomationResults.js:
+ *   - Does NOT create PR (PR already exists on test/{KEY} branch)
+ *   - Does NOT check for existing test files (rework always has them)
+ *   - Removes rework-specific labels (sm_test_rework_triggered)
+ *
+ * HOW TO REVERT BACK TO CI-BASED REWORK:
+ *   1. In pr_test_automation_rework.json, change postJSAction to:
+ *        "postJSAction": "agents/js/postNewCiReworkResults.js"
+ *   2. Restore skipAIProcessing: true in pr_test_automation_rework.json
+ *   3. Restore cliPrompt to: "./agents/prompts/new_test_ci_rework_prompt.md"
+ *   Commit 4c5ce73 (2026-05-21) was the last state using CI-based rework.
  */
 
 const { GIT_CONFIG, STATUSES, LABELS } = require('./config.js');
@@ -35,335 +44,182 @@ function readFile(path) {
 function readResultJson() {
     try {
         const raw = readFile('outputs/test_automation_result.json');
-        if (!raw) return null;
-        return JSON.parse(raw);
+        if (!raw) {
+            console.warn('outputs/test_automation_result.json is empty or missing');
+            return null;
+        }
+        const parsed = JSON.parse(raw);
+        console.log('Test rework result status:', parsed.status);
+        return parsed;
     } catch (e) {
         console.error('Failed to parse test_automation_result.json:', e);
         return null;
     }
 }
 
-function getGitHubRepoInfo() {
+function action(params) {
     try {
-        const remoteUrl = cleanCommandOutput(
-            cli_execute_command({ command: 'git config --get remote.origin.url' }) || ''
-        );
-        const match = remoteUrl.match(/github\.com[:/]([^/]+)\/([^/.]+)/);
-        if (!match) return null;
-        return { owner: match[1], repo: match[2].replace('.git', '') };
-    } catch (e) {
-        return null;
-    }
-}
+        const actualParams = params.ticket ? params : (params.jobParams || params);
+        const ticketKey = actualParams.ticket.key;
+        const ticketSummary = actualParams.ticket.fields ? actualParams.ticket.fields.summary : ticketKey;
 
-function findTestPRForTicket(workspace, repository, ticketKey) {
-    try {
-        const branchName = 'test/' + ticketKey;
-        const openPRs = github_list_prs({ workspace: workspace, repository: repository, state: 'open' });
-        const match = openPRs.filter(function(pr) {
-            return pr.head && pr.head.ref && pr.head.ref === branchName;
-        });
-        if (match.length > 0) return match[0];
-        console.warn('No open test PR found for branch', branchName);
-        return null;
-    } catch (e) {
-        console.error('Failed to find PR:', e);
-        return null;
-    }
-}
+        console.log('=== Processing test rework results for', ticketKey, '===');
 
-function commitAndPush(ticketKey, passed) {
-    const branchName = cleanCommandOutput(
-        cli_execute_command({ command: 'git branch --show-current' }) || ''
-    );
-    if (!branchName) throw new Error('Could not determine current git branch');
-
-    // Guard: refuse to push directly to main — rework must be on test/ branch
-    if (branchName === 'main' || branchName === 'master') {
-        throw new Error('Refusing to commit rework directly to "' + branchName + '". Expected test/' + ticketKey + ' branch. preCliJSAction may have failed to checkout the correct branch.');
-    }
-
-    console.log('Current branch:', branchName);
-
-    // Stage only testing/ folder
-    cli_execute_command({ command: 'git add testing/' });
-
-    const statusOutput = cleanCommandOutput(
-        cli_execute_command({ command: 'git status --porcelain' }) || ''
-    );
-
-    var localSha = '';
-    if (statusOutput.trim()) {
-        const result = passed ? 'fix' : 'update';
-        cli_execute_command({
-            command: 'git commit -m "' + ticketKey + ' test rework: ' + result + ' test after review"'
-        });
-        console.log('✅ Committed rework changes');
-    } else {
-        console.warn('No changes to commit in testing/ — pushing existing commits only');
-    }
-
-    // Get local HEAD SHA to verify push actually succeeded
-    localSha = cleanCommandOutput(
-        cli_execute_command({ command: 'git rev-parse HEAD' }) || ''
-    ).substring(0, 40);
-
-    try {
-        cli_execute_command({ command: 'git push -u origin ' + branchName });
-    } catch (e) {
-        console.log('Normal push failed, force pushing...');
-        cli_execute_command({ command: 'git push -u origin ' + branchName + ' --force' });
-    }
-
-    // Verify push succeeded by checking remote SHA matches local HEAD
-    const remoteCheck = cleanCommandOutput(
-        cli_execute_command({ command: 'git ls-remote --heads origin ' + branchName }) || ''
-    );
-    if (!remoteCheck.trim()) throw new Error('Branch not found on remote after push');
-
-    const remoteSha = remoteCheck.split(/\s+/)[0] || '';
-    if (localSha && remoteSha && !remoteSha.startsWith(localSha.substring(0, 10))) {
-        throw new Error('Push rejected: local HEAD ' + localSha.substring(0, 10) + ' does not match remote ' + remoteSha.substring(0, 10) + '. Branch protection may have blocked the push.');
-    }
-
-    console.log('✅ Pushed to remote branch:', branchName);
-    return branchName;
-}
-
-function createPRIfMissing(owner, repo, branchName, ticketKey) {
-    try {
-        const openPRs = github_list_prs({ workspace: owner, repository: repo, state: 'open' });
-        const existing = openPRs.filter(function(pr) {
-            return pr.head && pr.head.ref === branchName;
-        });
-        if (existing.length > 0) {
-            console.log('PR already exists: #' + existing[0].number);
-            return existing[0];
-        }
-
-        console.log('No open PR found — creating one via gh api...');
-        var ticket;
-        try { ticket = jira_get_ticket({ key: ticketKey }); } catch (e) { ticket = null; }
-        const summary = ticket && ticket.fields ? (ticket.fields.summary || ticketKey) : ticketKey;
-        const prTitle = ticketKey + ' ' + summary;
-
-        const prData = JSON.stringify({
-            title: prTitle,
-            body: 'Auto-created PR after test rework.\n\nTicket: ' + ticketKey,
-            head: branchName,
-            base: 'main'
-        });
-        file_write({ path: 'pr_post_rework_' + ticketKey + '.json', content: prData });
-
-        const createOutput = cli_execute_command({
-            command: 'gh api repos/' + owner + '/' + repo + '/pulls --input pr_post_rework_' + ticketKey + '.json'
-        }) || '';
-
-        var prJson;
-        try { prJson = JSON.parse(createOutput); } catch (e) { prJson = null; }
-        if (prJson && prJson.number) {
-            console.log('✅ Created PR #' + prJson.number + ' for', branchName);
-            return prJson;
-        }
-        console.warn('Could not create PR:', createOutput.substring(0, 200));
-        return null;
-    } catch (e) {
-        console.warn('createPRIfMissing error:', e);
-        return null;
-    }
-}
-
-function postThreadReplies(workspace, repository, pullRequestId) {
-    const repliesJson = readFile('outputs/review_replies.json');
-    if (!repliesJson) {
-        console.warn('outputs/review_replies.json not found — skipping thread replies');
-        return 0;
-    }
-
-    let data;
-    try {
-        data = JSON.parse(repliesJson);
-    } catch (e) {
-        console.warn('Failed to parse review_replies.json:', e);
-        return 0;
-    }
-
-    const replies = (data && data.replies) ? data.replies : [];
-    if (replies.length === 0) return 0;
-
-    let posted = 0;
-    replies.forEach(function(item) {
-        try {
-            github_reply_to_pr_thread({
-                workspace: workspace,
-                repository: repository,
-                pullRequestId: String(pullRequestId),
-                inReplyToId: String(item.inReplyToId),
-                text: item.reply || '✅ Addressed.'
+        // Step 1: Read structured result
+        const result = readResultJson();
+        if (!result) {
+            jira_post_comment({
+                key: ticketKey,
+                comment: 'h3. ⚠️ Test Rework Error\n\nCould not read test result JSON. AI may not have written test_automation_result.json.'
             });
-            posted++;
-        } catch (e) {
-            console.warn('Failed to reply to comment #' + item.inReplyToId + ':', e);
+            return { success: false, error: 'No test result JSON found' };
         }
 
-        if (item.threadId) {
+        const status = (result.status || '').toLowerCase();
+        const passed = status === 'passed';
+
+        // Step 2: Configure git author
+        try {
+            cli_execute_command({ command: 'git config user.name "' + GIT_CONFIG.AUTHOR_NAME + '"' });
+            cli_execute_command({ command: 'git config user.email "' + GIT_CONFIG.AUTHOR_EMAIL + '"' });
+        } catch (e) {
+            console.warn('Failed to configure git author:', e);
+        }
+
+        // Step 3: Read current branch
+        const branchName = cleanCommandOutput(
+            cli_execute_command({ command: 'git branch --show-current' }) || ''
+        );
+        if (!branchName) {
+            return { success: false, error: 'Could not determine current branch' };
+        }
+
+        // Guard: refuse to push to main/master
+        if (branchName === 'main' || branchName === 'master') {
+            return { success: false, error: 'Refusing to commit directly to "' + branchName + '". Expected test/' + ticketKey + ' branch.' };
+        }
+
+        console.log('Current branch:', branchName);
+
+        // Step 4: Stage test files only (NOT outputs/)
+        try { cli_execute_command({ command: 'git add e2e/tests/' }); } catch (e) {}
+        try { cli_execute_command({ command: 'git add e2e/fixtures/' }); } catch (e) {}
+        try { cli_execute_command({ command: 'git add e2e/helpers/' }); } catch (e) {}
+        try { cli_execute_command({ command: 'git add services/*/e2e/*_test.go' }); } catch (e) {}
+        try { cli_execute_command({ command: 'git add testing/' }); } catch (e) {}
+        try { cli_execute_command({ command: 'git add src/test/' }); } catch (e) {}
+
+        // Step 5: Check for changes
+        const rawStatus = cli_execute_command({ command: 'git status --porcelain' }) || '';
+        const statusOutput = cleanCommandOutput(rawStatus);
+        const statusLines = statusOutput.split('\n').filter(function(line) {
+            var trimmed = line.trim();
+            return trimmed &&
+                trimmed.indexOf('?? input/') !== 0 &&
+                trimmed.indexOf(' M agents') !== 0 &&
+                trimmed.indexOf('M agents') !== 0;
+        }).join('\n');
+
+        if (!statusLines.trim()) {
+            console.log('ℹ️ No test file changes to commit — pushing existing branch');
+        } else {
+            // Step 6: Commit
+            cli_execute_command({
+                command: 'git commit -m "' + ticketKey + ' test rework: ' + ticketSummary + '"'
+            });
+            console.log('✅ Committed rework fix');
+        }
+
+        // Step 7: Push
+        try {
+            cli_execute_command({ command: 'git push -u origin ' + branchName });
+        } catch (e) {
+            cli_execute_command({ command: 'git push -u origin ' + branchName + ' --force' });
+        }
+
+        // Verify push
+        const remoteCheck = cleanCommandOutput(
+            cli_execute_command({ command: 'git ls-remote --heads origin ' + branchName }) || ''
+        );
+        if (!remoteCheck.trim()) {
+            return { success: false, error: 'Branch not found on remote after push' };
+        }
+
+        console.log('✅ Pushed to remote branch:', branchName);
+
+        // Step 8: Find PR URL for comment
+        let prUrl = null;
+        try {
+            const listOutput = cleanCommandOutput(
+                cli_execute_command({ command: 'gh pr list --head ' + branchName + ' --state open --json url --jq ".[0].url"' }) || ''
+            );
+            if (listOutput && listOutput.startsWith('https://')) prUrl = listOutput;
+        } catch (e) {}
+
+        // Step 9: Post Jira comment
+        try {
+            const fixSummary = actualParams.response || '';
+            let comment = 'h3. 🔧 Test Rework ' + (passed ? 'PASSED' : 'FAILED') + '\n\n';
+            if (prUrl) {
+                comment += '*Pull Request*: ' + prUrl + '\n';
+            }
+            comment += '*Local Test Result*: ' + (result.summary || status) + '\n';
+            if (result.error) {
+                comment += '*Error*: ' + result.error + '\n';
+            }
+            if (fixSummary) {
+                comment += '\n---\n\n' + fixSummary;
+            }
+            jira_post_comment({ key: ticketKey, comment: comment });
+            console.log('✅ Posted Jira comment');
+        } catch (e) {
+            console.warn('Failed to post Jira comment:', e);
+        }
+
+        // Step 10: Move to final status
+        if (passed) {
             try {
-                github_resolve_pr_thread({
-                    workspace: workspace,
-                    repository: repository,
-                    pullRequestId: String(pullRequestId),
-                    threadId: item.threadId
-                });
+                jira_move_to_status({ key: ticketKey, statusName: STATUSES.IN_REVIEW_PASSED });
+                console.log('✅ Moved', ticketKey, 'to', STATUSES.IN_REVIEW_PASSED);
             } catch (e) {
-                console.warn('Failed to resolve thread', item.threadId + ':', e);
+                console.warn('Failed to move to In Review - Passed:', e);
+            }
+        } else {
+            try {
+                jira_move_to_status({ key: ticketKey, statusName: STATUSES.IN_REVIEW_FAILED });
+                console.log('✅ Moved', ticketKey, 'to', STATUSES.IN_REVIEW_FAILED);
+            } catch (e) {
+                console.warn('Failed to move to In Review - Failed:', e);
             }
         }
-    });
 
-    console.log('Posted ' + posted + '/' + replies.length + ' thread replies');
-    return posted;
-}
-
-function action(params) {
-    const actualParams = params.ticket ? params : (params.jobParams || params);
-    const ticketKey = actualParams.ticket.key;
-    const customParams = (actualParams.customParams) ||
-        (params.jobParams && params.jobParams.customParams) ||
-        (params.customParams);
-    const removeLabel = customParams && customParams.removeLabel;
-    const wipLabel = actualParams.metadata && actualParams.metadata.contextId
-        ? actualParams.metadata.contextId + '_wip'
-        : 'pr_test_automation_rework_wip';
-
-    function releaseLock() {
+        // Step 11: Remove WIP and rework trigger labels
+        const wipLabel = actualParams.metadata && actualParams.metadata.contextId
+            ? actualParams.metadata.contextId + '_wip'
+            : 'new_test_ci_rework_wip';
         try { jira_remove_label({ key: ticketKey, label: wipLabel }); } catch (e) {}
+        try { jira_remove_label({ key: ticketKey, label: LABELS.NEW_SM_CI_REWORK }); } catch (e) {}
+        try { jira_remove_label({ key: ticketKey, label: LABELS.NEW_CI_RETRY }); } catch (e) {}
+
+        const customParams = (actualParams.customParams) ||
+            (params.jobParams && params.jobParams.customParams) ||
+            (params.customParams);
+        const removeLabel = customParams && customParams.removeLabel;
         if (removeLabel) {
             try {
                 jira_remove_label({ key: ticketKey, label: removeLabel });
                 console.log('✅ Removed SM label:', removeLabel);
             } catch (e) {}
         }
-    }
 
-    try {
-        const fixSummary = actualParams.response || '_(No fix summary)_';
-
-        console.log('=== Processing test rework results for', ticketKey, '===');
-
-        // Step 1: Read new test result
-        const result = readResultJson();
-        if (!result || !result.status) {
-            const errMsg = !result
-                ? 'Could not read outputs/test_automation_result.json — file missing or empty.'
-                : 'outputs/test_automation_result.json is missing required "status" field (got: ' + JSON.stringify(result) + '). The agent must write { "status": "passed" | "failed", ... }.';
-            console.error(errMsg);
-            try {
-                jira_post_comment({
-                    key: ticketKey,
-                    comment: 'h3. ⚠️ Rework Error\n\n' + errMsg + '\n\nCheck CI logs for the agent output.'
-                });
-            } catch (e) {}
-            releaseLock();
-            return { success: false, error: errMsg };
-        }
-
-        const testStatus = result.status.toLowerCase();
-        const passed = testStatus === 'passed';
-        console.log('Re-run result:', result.status);
-
-        // Step 2: Configure git + commit/push testing/ only
-        try {
-            cli_execute_command({ command: 'git config user.name "' + GIT_CONFIG.AUTHOR_NAME + '"' });
-            cli_execute_command({ command: 'git config user.email "' + GIT_CONFIG.AUTHOR_EMAIL + '"' });
-        } catch (e) {}
-
-        let branchName;
-        try {
-            branchName = commitAndPush(ticketKey, passed);
-        } catch (e) {
-            console.error('Git operations failed:', e);
-            jira_post_comment({
-                key: ticketKey,
-                comment: 'h3. ❌ Rework Push Failed\n\n{code}' + e.toString() + '{code}'
-            });
-            releaseLock();
-            return { success: false, error: e.toString() };
-        }
-
-        // Step 3: Ensure PR exists; create if missing (e.g. preCliJSAction failed to create it)
-        const repoInfo = getGitHubRepoInfo();
-        var pr = repoInfo ? findTestPRForTicket(repoInfo.owner, repoInfo.repo, ticketKey) : null;
-        if (!pr && repoInfo && branchName) {
-            pr = createPRIfMissing(repoInfo.owner, repoInfo.repo, branchName, ticketKey);
-        }
-
-        if (pr && repoInfo) {
-            postThreadReplies(repoInfo.owner, repoInfo.repo, pr.number);
-
-            // Post PR comment with fix summary + new test result (GitHub Markdown from pr_body.md)
-            try {
-                const statusEmoji = passed ? '✅' : '❌';
-                const prBodyContent = readFile('outputs/pr_body.md') || fixSummary;
-                const prComment = '## 🔧 Test Rework Complete — ' + ticketKey + '\n\n' +
-                    '**Re-run result**: ' + statusEmoji + ' ' + testStatus.toUpperCase() + '\n\n' +
-                    '---\n\n' + prBodyContent;
-                github_add_pr_comment({
-                    workspace: repoInfo.owner,
-                    repository: repoInfo.repo,
-                    pullRequestId: String(pr.number),
-                    text: prComment
-                });
-                console.log('✅ Posted rework summary to PR');
-            } catch (e) {
-                console.warn('Failed to post PR comment:', e);
-            }
-        } else {
-            console.warn('No PR found — skipping GitHub PR comment');
-        }
-
-        // Step 4: Move ticket to In Review - Passed or In Review - Failed
-        // Bug creation/linking is handled by the bug_creation agent when TC reaches Failed status
-        const targetStatus = passed ? STATUSES.IN_REVIEW_PASSED : STATUSES.IN_REVIEW_FAILED;
-        try {
-            jira_move_to_status({ key: ticketKey, statusName: targetStatus });
-            console.log('✅ Moved', ticketKey, 'to', targetStatus);
-        } catch (e) {
-            console.warn('Failed to move ticket status:', e);
-        }
-
-        // Step 4b: Add pr_approved label after successful rework so retry_merge_test can auto-merge
-        if (passed) {
-            try {
-                jira_add_label({ key: ticketKey, label: LABELS.PR_APPROVED });
-                console.log('✅ Added pr_approved label');
-            } catch (e) {
-                console.warn('Failed to add pr_approved label:', e);
-            }
-        }
-
-        // Step 6: Post Jira comment
-        try {
-            const statusEmoji = passed ? '✅' : '❌';
-            let comment = 'h3. 🔧 Test Rework Completed\n\n';
-            comment += '*Re-run result*: ' + statusEmoji + ' *' + testStatus.toUpperCase() + '*\n';
-            comment += '*Branch*: {code}' + branchName + '{code}\n';
-            if (pr) comment += '*Pull Request*: ' + pr.html_url + '\n';
-            comment += '\n' + fixSummary;
-            jira_post_comment({ key: ticketKey, comment: comment });
-        } catch (e) {
-            console.warn('Failed to post Jira comment:', e);
-        }
-
-        // Step 7 & 8: Remove WIP label + SM idempotency label
-        releaseLock();
-
-        console.log('✅ Test rework complete — re-run:', testStatus, '→', targetStatus);
+        console.log('✅ Test rework complete —', passed ? 'PASSED' : 'FAILED');
 
         return {
             success: true,
-            testStatus: testStatus,
-            jiraStatus: targetStatus,
-            ticketKey: ticketKey
+            status: result.status,
+            ticketKey: ticketKey,
+            prUrl: prUrl,
+            branchName: branchName
         };
 
     } catch (error) {
@@ -377,7 +233,16 @@ function action(params) {
                 });
             }
         } catch (e) {}
-        releaseLock();
+
+        // Release labels on error too
+        try {
+            const key = (params.ticket || (params.jobParams && params.jobParams.ticket) || {}).key;
+            if (key) {
+                jira_remove_label({ key: key, label: LABELS.NEW_SM_CI_REWORK });
+                jira_remove_label({ key: key, label: LABELS.NEW_CI_RETRY });
+            }
+        } catch (e) {}
+
         return { success: false, error: error.toString() };
     }
 }
