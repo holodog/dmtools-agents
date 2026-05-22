@@ -7,14 +7,16 @@
     "agentParams": {
       "aiRole": "Senior QA Automation Engineer focused on test code fixes",
       "instructions": [
-        "./agents/instructions/test_automation/new_test_automation_instructions.md",
+        "./agents/instructions/test_automation/test_automation_instructions.md",
         "./agents/instructions/test_automation/test_automation_architecture.md",
+        "./agents/instructions/test_automation/test_automation_output_files.md",
+        "./agents/instructions/test_automation/test_automation_json_output.md",
         "./agents/instructions/common/bash_tools.md"
       ],
       "knownInfo": "",
       "formattingRules": "./agents/instructions/development/formatting_rules.md"
     },
-    "cliPrompt": "./agents/prompts/new_test_ci_rework_prompt.md",
+    "cliPrompt": "./agents/prompts/test_ci_rework_prompt.md",
     "cliCommands": [
       "./agents/scripts/run-agent.sh"
     ],
@@ -22,11 +24,11 @@
     "ticketContextDepth": 1,
     "attachResponseAsFile": false,
     "cleanupInputFolder": false,
-    "skipAIProcessing": true,
+    "skipAIProcessing": false,
     "alwaysPostComments": true,
     "preJSAction": "agents/js/checkWipLabel.js",
     "preCliJSAction": "agents/js/preCliTestReworkSetup.js",
-    "postJSAction": "agents/js/postNewCiReworkResults.js",
+    "postJSAction": "agents/js/postTestAutomationResults.js",
     "customParams": {
       "removeLabel": "sm_test_rework_triggered"
     },
