@@ -1,0 +1,10 @@
+{
+  "name": "JSRunner",
+  "params": {
+    "jsPath": "agents/js/visualizeSM.js",
+    "jobParams": {
+      "configFile": "agents/sm_ms.json",
+      "outputPath": "agents/outputs/SM_WORKFLOW.md"
+    }
+  }
+}
