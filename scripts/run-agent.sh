@@ -213,9 +213,9 @@ elif [ "$PROVIDER" = "claude" ]; then
   echo "$PROMPT" > "$PROMPT_FILE"
 
   if [ ${#PASS_ARGS[@]} -eq 0 ]; then
-    CMD=(claude --permission-mode dontAsk --model "$MODEL" --max-turns 50 --dangerously-skip-permissions -p "$PROMPT_FILE")
+    CMD=(claude --permission-mode bypassPermissions --model "$MODEL" --max-turns 50 --dangerously-skip-permissions -p "$PROMPT_FILE")
   else
-    CMD=(claude --permission-mode dontAsk --model "$MODEL" "${PASS_ARGS[@]}" --max-turns 50 --dangerously-skip-permissions -p "$PROMPT_FILE")
+    CMD=(claude --permission-mode bypassPermissions --model "$MODEL" "${PASS_ARGS[@]}" --max-turns 50 --dangerously-skip-permissions -p "$PROMPT_FILE")
   fi
 
 else
