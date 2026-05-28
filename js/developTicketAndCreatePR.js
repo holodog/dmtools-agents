@@ -119,7 +119,8 @@ function performGitOperations(branchName, commitMessage) {
         // Clean agents submodule before committing (dmtools may have created cache files)
         console.log('Cleaning agents submodule...');
         try {
-            cli_execute_command({ command: 'cd agents && git clean -fdx && git checkout -- . && cd ..' });
+            cli_execute_command({ command: 'git -C agents clean -fdx' });
+            cli_execute_command({ command: 'git -C agents checkout -- .' });
             console.log('✅ Cleaned agents submodule');
         } catch (e) {
             console.warn('Could not clean agents submodule:', e);

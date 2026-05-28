@@ -93,8 +93,8 @@ function checkoutPRBranch(branchName) {
     // The input/ folder is created by CliExecutionHelper before preCliJSAction runs
     // Order matters: reset tracked files FIRST, then clean untracked/ignored files
     try {
-        cli_execute_command({ command: 'git reset --hard HEAD 2>/dev/null || true' });
-        cli_execute_command({ command: 'git clean -fdx 2>/dev/null || true' });
+        cli_execute_command({ command: 'git reset --hard HEAD' });
+        cli_execute_command({ command: 'git clean -fdx' });
         console.log('Cleaned all uncommitted changes before branch checkout');
     } catch (e) {
         console.warn('Could not clean workspace:', e);

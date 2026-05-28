@@ -51,10 +51,11 @@ function checkoutBranch(ticketKey) {
     // Clean any uncommitted changes (dmtools cache files, submodule modifications)
     // Order matters: reset tracked files FIRST, then clean untracked/ignored files
     try {
-        cli_execute_command({ command: 'git reset --hard HEAD 2>/dev/null || true' });
-        cli_execute_command({ command: 'git clean -fdx 2>/dev/null || true' });
+        cli_execute_command({ command: 'git reset --hard HEAD' });
+        cli_execute_command({ command: 'git clean -fdx' });
         // Clean inside agents submodule (dmtools may create cache there)
-        cli_execute_command({ command: 'cd agents && git reset --hard HEAD && git clean -fdx && cd ..' });
+        cli_execute_command({ command: 'git -C agents reset --hard HEAD' });
+        cli_execute_command({ command: 'git -C agents clean -fdx' });
         console.log('Cleaned DMTools cache files and submodule');
     } catch (e) {
         console.warn('Could not clean cache files:', e);
@@ -87,7 +88,7 @@ function checkoutBranch(ticketKey) {
         // Branch exists on remote - delete and recreate from base to avoid conflicts
         console.log('Branch exists on remote, deleting remote tracking branch and recreating from base:', branchName);
         try {
-            cli_execute_command({ command: 'git push origin --delete ' + branchName + ' 2>/dev/null || true' });
+            cli_execute_command({ command: 'git push origin --delete ' + branchName });
             console.log('Deleted remote branch');
         } catch (e) {
             console.warn('Could not delete remote branch:', e);
