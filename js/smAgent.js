@@ -148,11 +148,15 @@ function processRuleLocally(rule, ruleIndex) {
 
     var agentConfig;
     try {
-        agentConfig = JSON.parse(file_read({ path: rule.configFile }));
+        var rawConfig = file_read({ path: rule.configFile });
+        if (!rawConfig) { console.error('  ❌ Config missing: ' + rule.configFile); return { processed: 0, skipped: 0 }; }
+        agentConfig = JSON.parse(rawConfig);
     } catch (e) {
-        console.error('  ❌ Config error: ' + rule.configFile);
+        console.error('  ❌ Config error: ' + rule.configFile + ' — ' + e.message);
         return { processed: 0, skipped: 0 };
     }
+
+    if (!agentConfig) { console.error('  ❌ Config parsed as null: ' + rule.configFile); return { processed: 0, skipped: 0 }; }
 
     var agentParams = agentConfig.params || {};
     try { if (JIRA_INITIATOR_ACCOUNT_ID) agentParams.initiator = JIRA_INITIATOR_ACCOUNT_ID; } catch (e) {}
