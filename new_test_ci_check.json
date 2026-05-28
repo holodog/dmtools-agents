@@ -1,0 +1,17 @@
+{
+  "name": "Teammate",
+  "params": {
+    "metadata": {
+      "contextId": "new_test_ci_check"
+    },
+    "agentParams": {
+      "aiRole": "CI Status Checker"
+    },
+    "outputType": "none",
+    "ticketContextDepth": 1,
+    "skipAIProcessing": true,
+    "alwaysPostComments": true,
+    "postJSAction": "agents/js/checkCiForTestCases.js",
+    "inputJql": "key = MAJESENS-1"
+  }
+}
