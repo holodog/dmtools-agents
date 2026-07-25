@@ -46,9 +46,9 @@ function action(params) {
             return { success: true, action: 'no_test_cases', ticketKey };
         }
 
-        // Step 2: Find linked Test Cases that are NOT yet Passed
+        // Step 2: Find linked Test Cases that are NOT yet Passed/Done
         const notPassedTCs = jira_search_by_jql({
-            jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype = "Test Case" AND status != "Passed"',
+            jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype = "Test Case" AND status not in ("Passed", "Done")',
             maxResults: 1
         }) || [];
 
