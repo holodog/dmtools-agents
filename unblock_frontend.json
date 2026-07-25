@@ -1,0 +1,23 @@
+{
+  "name": "Teammate",
+  "params": {
+    "metadata": {
+      "contextId": "unblock_frontend"
+    },
+    "agentParams": {
+      "aiRole": "Cross-repo unblock checker",
+      "instructions": [
+        "./agents/instructions/common/bash_tools.md"
+      ],
+      "knownInfo": "",
+      "formattingRules": "",
+      "fewShots": ""
+    },
+    "outputType": "none",
+    "ticketContextDepth": 1,
+    "skipAIProcessing": true,
+    "alwaysPostComments": true,
+    "postJSAction": "agents/js/unblockFrontendOnBackendMerge.js",
+    "inputJql": "key = MAJESENS-1"
+  }
+}

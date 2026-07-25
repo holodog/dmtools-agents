@@ -8,6 +8,14 @@
 // ─── Global State ────────────────────────────────────────────────────────────
 var runSummary = [];
 
+// Cross-repo guard labels (must match LABELS in config.js — smAgent.js runs in
+// the GraalVM JSRunner global scope where require() is unavailable)
+var GUARD_LABELS = {
+    HAS_API_DEPENDENCY: 'has_api_dependency',
+    NEEDS_BACKEND: 'needs_backend',
+    BACKEND_SPLIT_CREATED: 'backend_split_created'
+};
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getStalenessInfo(ticket) {
@@ -111,6 +119,144 @@ function hasLabel(ticket, label) {
     if (!label) return false;
     var labels = (ticket.fields && ticket.fields.labels) ? ticket.fields.labels : [];
     return labels.indexOf(label) !== -1;
+}
+
+// ─── Cross-Repo Guard ────────────────────────────────────────────────────────
+// Detects frontend-scoped tickets that need backend API work and splits them:
+// auto-creates a linked backend Story, blocks the frontend ticket, and lets
+// the SM dispatch the backend part first. Opt-in per rule via rule.crossRepoGuard
+// (only sm_ms.json sets it — sm.json/mytube is unaffected).
+// Returns true  → dispatch must be skipped (ticket blocked/waiting/just split).
+// Returns false → dispatch proceeds normally.
+
+function findBackendBlockers(ticketKey, statusClause) {
+    try {
+        return jira_search_by_jql({
+            jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype = Story' +
+                 ' AND labels in ("backend","api","go") AND ' + statusClause,
+            maxResults: 1
+        }) || [];
+    } catch (e) {
+        console.warn('  ⚠️ linkedIssues JQL fail for ' + ticketKey + ': ' + (e.message || e));
+        return [];
+    }
+}
+
+function createBackendSplitTicket(ticket, key) {
+    var fullTicket = null;
+    try {
+        var raw = jira_get_ticket(key);
+        fullTicket = (typeof raw === 'string') ? JSON.parse(raw) : raw;
+    } catch (e) {
+        console.warn('  ⚠️ Full ticket fetch fail ' + key + ': ' + (e.message || e));
+    }
+
+    var fields = (fullTicket && fullTicket.fields) || {};
+    var summary = fields.summary || key;
+    var projectKey = key.split('-')[0];
+
+    var backendFields = {
+        summary: '[Backend API] ' + summary,
+        description: 'h3. Backend API Implementation\n\n' +
+            'Auto-created by SM cross-repo guard for frontend ticket ' +
+            '[' + key + '|https://majesens.atlassian.net/browse/' + key + '].\n\n' +
+            'Implement the backend changes described in the *API Changes* section of the\n' +
+            'Solution field on ' + key + ' (fetch the linked ticket for the full contract).\n\n' +
+            'After this ticket is merged, ' + key + ' is unblocked and dispatched to ms_front automatically.',
+        issuetype: { name: 'Story' },
+        labels: ['backend', 'api', 'ai_generated']
+    };
+    if (fields.parent && fields.parent.key) {
+        backendFields.parent = { key: fields.parent.key };
+    }
+
+    var result = jira_create_ticket_with_json({ project: projectKey, fieldsJson: backendFields });
+    var parsed = (typeof result === 'string') ? JSON.parse(result) : result;
+    return parsed ? parsed.key : null;
+}
+
+function crossRepoGuard(ticket, rule) {
+    if (!rule.crossRepoGuard) return false;
+
+    var key = ticket.key;
+    var labels = (ticket.fields && ticket.fields.labels) ? ticket.fields.labels : [];
+
+    // 1. Frontend-scoped only (same label set as getTargetRepo)
+    var isFrontend = labels.indexOf('frontend') !== -1 ||
+                     labels.indexOf('ui') !== -1 ||
+                     labels.indexOf('react') !== -1;
+    if (!isFrontend) return false;
+
+    // 2. Dependency marker required (SA-set for stories, human-set for bugs)
+    var hasMarker = labels.indexOf(GUARD_LABELS.HAS_API_DEPENDENCY) !== -1 ||
+                    labels.indexOf(GUARD_LABELS.NEEDS_BACKEND) !== -1;
+    if (!hasMarker) return false;
+
+    // 3. Active backend blocker → stay blocked, skip dispatch
+    if (findBackendBlockers(key, 'status NOT IN ("Merged","Done")').length > 0) {
+        console.log('  ⏳ ' + key + ' waiting on active backend blocker');
+        return true;
+    }
+
+    // 4. Merged/Done backend blocker → dependency satisfied, dispatch normally
+    if (findBackendBlockers(key, 'status IN ("Merged","Done")').length > 0) {
+        return false;
+    }
+
+    // 5. Already split in a previous cycle → skip dispatch (unblock rule owns it)
+    if (labels.indexOf(GUARD_LABELS.BACKEND_SPLIT_CREATED) !== -1) return true;
+
+    // 6. No backend ticket exists — create the split
+    console.log('  🔀 CROSS-REPO SPLIT: ' + key + ' needs a backend ticket');
+    var backendKey = null;
+    try {
+        backendKey = createBackendSplitTicket(ticket, key);
+    } catch (e) {
+        console.error('  ❌ Backend ticket creation fail ' + key + ': ' + (e.message || e));
+    }
+    if (!backendKey) {
+        console.error('  ❌ No backend key — skipping dispatch, will retry next cycle');
+        return true; // never fall through to an ms_front dispatch without the API
+    }
+    console.log('  ✅ Created ' + backendKey + ' for ' + key);
+
+    try {
+        // Mirror createIntakeTickets.js: sourceKey = blocked ticket, relationship 'Blocks'
+        jira_link_issues({ sourceKey: key, anotherKey: backendKey, relationship: 'Blocks' });
+    } catch (e) {
+        console.warn('  ⚠️ Link fail ' + backendKey + ' blocks ' + key + ': ' + (e.message || e));
+    }
+
+    try {
+        jira_move_to_status({ key: key, statusName: 'Blocked' });
+        console.log('  ✅ ' + key + ' → Blocked');
+    } catch (e) {
+        console.warn('  ⚠️ Block move fail ' + key + ': ' + (e.message || e));
+    }
+
+    try {
+        jira_move_to_status({ key: backendKey, statusName: 'Ready For Development' });
+        console.log('  ✅ ' + backendKey + ' → Ready For Development');
+    } catch (e) {
+        console.warn('  ⚠️ RFD move fail ' + backendKey + ': ' + (e.message || e));
+    }
+
+    try {
+        jira_add_label({ key: key, label: GUARD_LABELS.BACKEND_SPLIT_CREATED });
+    } catch (e) {}
+
+    try {
+        jira_post_comment({
+            key: key,
+            comment: 'h3. Cross-Repo API Split\n\n' +
+                'This frontend ticket requires backend API changes. Created ' +
+                '[' + backendKey + '|https://majesens.atlassian.net/browse/' + backendKey + '].\n\n' +
+                'This ticket stays *Blocked* until the backend implementation is merged, ' +
+                'then it is re-dispatched to ms_front automatically.'
+        });
+    } catch (e) {}
+
+    return true;
 }
 
 // ─── Local execution ──────────────────────────────────────────────────────────
@@ -250,6 +396,18 @@ function processRule(rule, repoInfo, ruleIndex) {
         if (rule.skipIfLabel && hasLabel(ticket, rule.skipIfLabel)) {
             console.log('  ⏭️  ' + key + ' skipped');
             runSummary.push({ rule: ruleLabel, ticket: key, action: '⏭️ Skipped', status: ticket.fields.status.name, updated: stale });
+            sCount++;
+            return;
+        }
+
+        if (rule.crossRepoGuard && crossRepoGuard(ticket, rule)) {
+            runSummary.push({
+                rule: ruleLabel,
+                ticket: key,
+                action: '🔀 Cross-repo guard — backend split created/waiting, dispatch skipped',
+                status: ticket.fields.status.name,
+                updated: stale
+            });
             sCount++;
             return;
         }

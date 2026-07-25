@@ -56,12 +56,20 @@
           "addLabel": "sm_task_intake_triggered"
         },
         {
+          "description": "Blocked split tickets → unblock when backend blocker Merged",
+          "jql": "project = MAJESENS AND issuetype in ('Story', 'Bug') AND status = 'Blocked' AND labels = 'backend_split_created'",
+          "configFile": "agents/unblock_frontend.json",
+          "workflowRef": "master",
+          "localExecution": true
+        },
+        {
           "description": "Ready For Development Stories → trigger story_development",
           "jql": "project = MAJESENS AND issuetype in ('Story') AND status in ('Ready For Development')",
           "configFile": "agents/story_development.json",
           "skipIfLabel": "sm_story_development_triggered",
           "workflowRef": "master",
-          "addLabel": "sm_story_development_triggered"
+          "addLabel": "sm_story_development_triggered",
+          "crossRepoGuard": true
         },
         {
           "description": "Ready For Development Bugs → trigger bug_development",
@@ -70,7 +78,8 @@
           "skipIfLabel": "sm_bug_development_triggered",
           "workflowRef": "master",
           "addLabel": "sm_bug_development_triggered",
-          "enabled": true
+          "enabled": true,
+          "crossRepoGuard": true
         },
         {
           "description": "In Review with merge conflicts → trigger pr_rework for resolution",
