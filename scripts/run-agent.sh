@@ -10,7 +10,6 @@ Provider is controlled by AI_AGENT_PROVIDER environment variable (default: curso
 
 Providers:
   cursor   - Uses cursor-agent (default)
-  codemie  - Uses codemie-claude
   copilot  - Uses GitHub Copilot CLI (npx @github/copilot)
   cline    - Uses cline CLI
   claude   - Uses claude CLI
@@ -20,10 +19,10 @@ Example:
 
 Notes:
   - Provide the prompt as a single argument
-  - Extra arguments before the prompt are passed through to the agent (cursor and codemie)
+  - Extra arguments before the prompt are passed through to the agent
   - Useful for resume: $(basename "$0") --continue --resume "fix the push error"
-  - For codemie: requires CODEMIE_API_KEY and CODEMIE_BASE_URL environment variables
   - For copilot: requires COPILOT_GITHUB_TOKEN or GITHUB_TOKEN environment variable
+  - Max turns configurable via MAX_TURNS environment variable (default: 50)
   - Final response is written to outputs/response.md
 EOF
 }
@@ -86,46 +85,7 @@ fi
 PROVIDER="${AI_AGENT_PROVIDER:-cursor}"
 echo "AI Agent Provider: $PROVIDER"
 
-if [ "$PROVIDER" = "codemie" ]; then
-  if [ -z "${CODEMIE_API_KEY:-}" ]; then
-    echo "Error: CODEMIE_API_KEY environment variable is required for codemie provider" >&2
-    exit 1
-  fi
-
-  if [ -z "${CODEMIE_BASE_URL:-}" ]; then
-    echo "Error: CODEMIE_BASE_URL environment variable is required for codemie provider" >&2
-    exit 1
-  fi
-
-  echo "Codemie Configuration:"
-  echo "  Base URL: ${CODEMIE_BASE_URL}"
-  echo "  Model: ${CODEMIE_MODEL:-claude-4-5-sonnet}"
-  echo "  Max Turns: ${CODEMIE_MAX_TURNS:-50}"
-
-  if [ ${#PASS_ARGS[@]} -eq 0 ]; then
-    CMD=(codemie-claude
-      --base-url "${CODEMIE_BASE_URL}"
-      --api-key "${CODEMIE_API_KEY}"
-      --model "${CODEMIE_MODEL:-claude-4-5-sonnet}"
-      --provider "litellm"
-      -p "$PROMPT"
-      --max-turns "${CODEMIE_MAX_TURNS:-50}"
-      --dangerously-skip-permissions
-      --allowedTools "Bash(*),Read(*),Curl(*)")
-  else
-    CMD=(codemie-claude
-      --base-url "${CODEMIE_BASE_URL}"
-      --api-key "${CODEMIE_API_KEY}"
-      --model "${CODEMIE_MODEL:-claude-4-5-sonnet}"
-      --provider "litellm"
-      "${PASS_ARGS[@]}"
-      -p "$PROMPT"
-      --max-turns "${CODEMIE_MAX_TURNS:-50}"
-      --dangerously-skip-permissions
-      --allowedTools "Bash(*),Read(*),Curl(*)")
-  fi
-
-elif [ "$PROVIDER" = "copilot" ]; then
+if [ "$PROVIDER" = "copilot" ]; then
   # Export COPILOT_GITHUB_TOKEN if not set but GITHUB_TOKEN is available
   if [ -z "${COPILOT_GITHUB_TOKEN:-}" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
     export COPILOT_GITHUB_TOKEN="${GITHUB_TOKEN}"
@@ -204,6 +164,7 @@ elif [ "$PROVIDER" = "claude" ]; then
 
   echo "Claude Configuration:"
   echo "  Model: $MODEL (AI_AGENT: ${AI_AGENT:-$DEFAULT_LLM:-not set})"
+  echo "  Max Turns: ${MAX_TURNS:-50}"
   echo "  ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-not set}"
   echo "  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:+set (length=${#ANTHROPIC_API_KEY})}"
   echo "  Working directory: $(pwd)"
@@ -213,9 +174,9 @@ elif [ "$PROVIDER" = "claude" ]; then
   echo "$PROMPT" > "$PROMPT_FILE"
 
   if [ ${#PASS_ARGS[@]} -eq 0 ]; then
-    CMD=(claude --permission-mode bypassPermissions --model "$MODEL" --max-turns 50 --dangerously-skip-permissions -p "$PROMPT_FILE")
+    CMD=(claude --permission-mode bypassPermissions --model "$MODEL" --max-turns "${MAX_TURNS:-50}" --dangerously-skip-permissions -p "$PROMPT_FILE")
   else
-    CMD=(claude --permission-mode bypassPermissions --model "$MODEL" "${PASS_ARGS[@]}" --max-turns 50 --dangerously-skip-permissions -p "$PROMPT_FILE")
+    CMD=(claude --permission-mode bypassPermissions --model "$MODEL" "${PASS_ARGS[@]}" --max-turns "${MAX_TURNS:-50}" --dangerously-skip-permissions -p "$PROMPT_FILE")
   fi
 
 else
