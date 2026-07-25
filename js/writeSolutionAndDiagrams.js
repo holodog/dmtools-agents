@@ -85,6 +85,17 @@ function action(params) {
             console.warn('Failed to add ai_generated label:', e);
         }
 
+        // 7b. API dependency flag → has_api_dependency label (consumed by SM crossRepoGuard)
+        try {
+            var apiFlag = file_read('outputs/api_dependency.flag');
+            if (apiFlag && apiFlag.trim()) {
+                jira_add_label({ key: ticketKey, label: LABELS.HAS_API_DEPENDENCY });
+                console.log('Added ' + LABELS.HAS_API_DEPENDENCY + ' label to ' + ticketKey);
+            }
+        } catch (e) {
+            // No flag file — solution has no API dependency
+        }
+
         // 8. Remove WIP label if present
         if (wipLabel) {
             try {
