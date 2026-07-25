@@ -129,6 +129,22 @@ function hasLabel(ticket, label) {
 // Returns true  → dispatch must be skipped (ticket blocked/waiting/just split).
 // Returns false → dispatch proceeds normally.
 
+// Probe once per run: does this project's workflow even have a "Blocked"
+// status? (MAJESENS doesn't.) dmtools' jira_move_to_status silently no-ops
+// on a missing status, so verify via JQL probe instead of trusting the move.
+var blockedStatusExists = null;
+function hasBlockedStatus(projectKey) {
+    if (blockedStatusExists !== null) return blockedStatusExists;
+    try {
+        jira_search_by_jql({ jql: 'project = ' + projectKey + ' AND status = "Blocked"', maxResults: 1 });
+        blockedStatusExists = true;
+    } catch (e) {
+        // JQL parse error → status value doesn't exist in this project
+        blockedStatusExists = false;
+    }
+    return blockedStatusExists;
+}
+
 function findBackendBlockers(ticketKey, statusClause) {
     try {
         return jira_search_by_jql({
@@ -227,11 +243,18 @@ function crossRepoGuard(ticket, rule) {
         console.warn('  ⚠️ Link fail ' + backendKey + ' blocks ' + key + ': ' + (e.message || e));
     }
 
-    try {
-        jira_move_to_status({ key: key, statusName: 'Blocked' });
-        console.log('  ✅ ' + key + ' → Blocked');
-    } catch (e) {
-        console.warn('  ⚠️ Block move fail ' + key + ': ' + (e.message || e));
+    // Optional visibility: move to Blocked when the workflow has that status.
+    // Correctness does not depend on it — the active-blocker check holds the
+    // ticket in future cycles regardless of its status.
+    if (hasBlockedStatus(key.split('-')[0])) {
+        try {
+            jira_move_to_status({ key: key, statusName: 'Blocked' });
+            console.log('  ✅ ' + key + ' → Blocked');
+        } catch (e) {
+            console.warn('  ⚠️ Block move fail ' + key + ': ' + (e.message || e));
+        }
+    } else {
+        console.log('  ℹ️ No "Blocked" status in workflow — ' + key + ' keeps current status, hold enforced by blocker check');
     }
 
     try {

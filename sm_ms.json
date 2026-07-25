@@ -56,8 +56,8 @@
           "addLabel": "sm_task_intake_triggered"
         },
         {
-          "description": "Blocked split tickets → unblock when backend blocker Merged",
-          "jql": "project = MAJESENS AND issuetype in ('Story', 'Bug') AND status = 'Blocked' AND labels = 'backend_split_created'",
+          "description": "Split tickets → clean up when backend blocker Merged (label-based; 'Blocked' status may not exist)",
+          "jql": "project = MAJESENS AND issuetype in ('Story', 'Bug') AND labels = 'backend_split_created' AND status NOT IN ('Merged', 'Done')",
           "configFile": "agents/unblock_frontend.json",
           "workflowRef": "master",
           "localExecution": true
