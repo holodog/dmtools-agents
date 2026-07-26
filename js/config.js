@@ -69,7 +69,10 @@ const LABELS = {
     // Cross-repo split (frontend ticket needing backend API work)
     HAS_API_DEPENDENCY: 'has_api_dependency',        // Set by SA on frontend stories needing backend work
     NEEDS_BACKEND: 'needs_backend',                  // Human/BA/intake label on bugs needing backend work
-    BACKEND_SPLIT_CREATED: 'backend_split_created'   // Idempotency: paired backend ticket already created
+    BACKEND_SPLIT_CREATED: 'backend_split_created',  // Idempotency: paired backend ticket already created
+    // Cross-repo split, mirror (backend ticket needing frontend follow-up)
+    NEEDS_FRONTEND: 'needs_frontend',                // Set by SA (or human, for bugs) on backend tickets needing UI work
+    FRONTEND_SPLIT_CREATED: 'frontend_split_created' // Idempotency: paired frontend ticket already created
 };
 
 // Git Configuration

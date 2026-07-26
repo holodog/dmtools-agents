@@ -13,7 +13,9 @@ var runSummary = [];
 var GUARD_LABELS = {
     HAS_API_DEPENDENCY: 'has_api_dependency',
     NEEDS_BACKEND: 'needs_backend',
-    BACKEND_SPLIT_CREATED: 'backend_split_created'
+    BACKEND_SPLIT_CREATED: 'backend_split_created',
+    NEEDS_FRONTEND: 'needs_frontend',
+    FRONTEND_SPLIT_CREATED: 'frontend_split_created'
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -191,17 +193,69 @@ function createBackendSplitTicket(ticket, key) {
     return parsed ? parsed.key : null;
 }
 
+function findLinkedFrontend(ticketKey) {
+    try {
+        return jira_search_by_jql({
+            jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype = Story' +
+                 ' AND labels in ("frontend","ui","react")',
+            maxResults: 1
+        }) || [];
+    } catch (e) {
+        console.warn('  ⚠️ linkedIssues(frontend) JQL fail for ' + ticketKey + ': ' + (e.message || e));
+        return [];
+    }
+}
+
+function createFrontendSplitTicket(key) {
+    var fullTicket = null;
+    try {
+        var raw = jira_get_ticket(key);
+        fullTicket = (typeof raw === 'string') ? JSON.parse(raw) : raw;
+    } catch (e) {
+        console.warn('  ⚠️ Full ticket fetch fail ' + key + ': ' + (e.message || e));
+    }
+
+    var fields = (fullTicket && fullTicket.fields) || {};
+    var summary = fields.summary || key;
+    var projectKey = key.split('-')[0];
+
+    var frontendFields = {
+        summary: '[Frontend] ' + summary,
+        description: 'h3. Frontend Implementation\n\n' +
+            'Auto-created by SM cross-repo guard (mirror) for backend ticket ' +
+            '[' + key + '|https://majesens.atlassian.net/browse/' + key + '].\n\n' +
+            'Implement the frontend changes consuming the API/logic from ' + key + '.\n' +
+            'The API contract is in the Solution field and the API-sync comment on ' + key + '.\n\n' +
+            'This ticket is dispatched to ms_front after ' + key + ' is merged.',
+        issuetype: { name: 'Story' },
+        // has_api_dependency is deliberate: the main guard's active/merged
+        // blocker checks then hold this ticket until the backend ticket merges
+        labels: ['frontend', 'has_api_dependency', 'ai_generated']
+    };
+    if (fields.parent && fields.parent.key) {
+        frontendFields.parent = { key: fields.parent.key };
+    }
+
+    var result = jira_create_ticket_with_json({ project: projectKey, fieldsJson: frontendFields });
+    var parsed = (typeof result === 'string') ? JSON.parse(result) : result;
+    return parsed ? parsed.key : null;
+}
+
 function crossRepoGuard(ticket, rule) {
     if (!rule.crossRepoGuard) return false;
 
     var key = ticket.key;
     var labels = (ticket.fields && ticket.fields.labels) ? ticket.fields.labels : [];
 
-    // 1. Frontend-scoped only (same label set as getTargetRepo)
+    // 1. Scope detection (same label sets as getTargetRepo)
     var isFrontend = labels.indexOf('frontend') !== -1 ||
                      labels.indexOf('ui') !== -1 ||
                      labels.indexOf('react') !== -1;
-    if (!isFrontend) return false;
+
+    // Non-frontend tickets delegate to the mirror guard (backend → frontend
+    // split). Every path of the frontend branch below returns, so the mirror
+    // never double-fires on frontend-scoped tickets.
+    if (!isFrontend) return mirrorGuard(key, labels);
 
     // 2. Dependency marker required (SA-set for stories, human-set for bugs)
     var hasMarker = labels.indexOf(GUARD_LABELS.HAS_API_DEPENDENCY) !== -1 ||
@@ -280,6 +334,77 @@ function crossRepoGuard(ticket, rule) {
     } catch (e) {}
 
     return true;
+}
+
+/**
+ * Mirror cross-repo guard — backend-scoped ticket needing frontend follow-up.
+ * Creates the paired frontend Story but NEVER holds the backend dispatch:
+ * the created Story carries frontend + has_api_dependency labels, so the main
+ * guard's blocker checks hold it and release it after the backend merge.
+ * Always returns false (backend dispatch proceeds).
+ */
+function mirrorGuard(key, labels) {
+    // Backend-scoped only (same label set as getTargetRepo)
+    if (labels.indexOf('backend') === -1 &&
+        labels.indexOf('api') === -1 &&
+        labels.indexOf('go') === -1) {
+        return false;
+    }
+
+    // Marker required (SA-set for stories, human-set for bugs)
+    if (labels.indexOf(GUARD_LABELS.NEEDS_FRONTEND) === -1) return false;
+
+    // Already split in a previous cycle
+    if (labels.indexOf(GUARD_LABELS.FRONTEND_SPLIT_CREATED) !== -1) return false;
+
+    // A frontend Story is already linked (human- or automation-created)
+    if (findLinkedFrontend(key).length > 0) return false;
+
+    console.log('  🔀 CROSS-REPO SPLIT (mirror): ' + key + ' needs a frontend ticket');
+    var frontendKey = null;
+    try {
+        frontendKey = createFrontendSplitTicket(key);
+    } catch (e) {
+        console.error('  ❌ Frontend ticket creation fail ' + key + ': ' + (e.message || e));
+    }
+    if (!frontendKey) {
+        // Backend work is independent — dispatch proceeds, split retries next
+        // cycle (idempotency label is only set after a successful create)
+        console.warn('  ⚠️ No frontend key — backend dispatch proceeds, split retried next cycle');
+        return false;
+    }
+    console.log('  ✅ Created ' + frontendKey + ' for ' + key);
+
+    try {
+        // sourceKey = the blocked (frontend) ticket, per createIntakeTickets.js
+        jira_link_issues({ sourceKey: frontendKey, anotherKey: key, relationship: 'Blocks' });
+    } catch (e) {
+        console.warn('  ⚠️ Link fail ' + key + ' blocks ' + frontendKey + ': ' + (e.message || e));
+    }
+
+    try {
+        jira_move_to_status({ key: frontendKey, statusName: 'Ready For Development' });
+        console.log('  ✅ ' + frontendKey + ' → Ready For Development');
+    } catch (e) {
+        console.warn('  ⚠️ RFD move fail ' + frontendKey + ': ' + (e.message || e));
+    }
+
+    try {
+        jira_add_label({ key: key, label: GUARD_LABELS.FRONTEND_SPLIT_CREATED });
+    } catch (e) {}
+
+    try {
+        jira_post_comment({
+            key: key,
+            comment: 'h3. Cross-Repo Frontend Split\n\n' +
+                'This backend ticket requires frontend follow-up. Created ' +
+                '[' + frontendKey + '|https://majesens.atlassian.net/browse/' + frontendKey + '].\n\n' +
+                'It is held until this backend implementation is merged, ' +
+                'then dispatched to ms_front automatically.'
+        });
+    } catch (e) {}
+
+    return false;
 }
 
 // ─── Local execution ──────────────────────────────────────────────────────────
