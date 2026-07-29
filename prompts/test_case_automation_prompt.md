@@ -6,84 +6,51 @@ User request is in the 'input' folder. Read all files there.
 3. `linked_bugs.md` *(if present)* — **CRITICAL**: linked bugs that block or are related to this test case.
    - Read the **Solution** field and **AI Fix Comments** for each bug carefully.
    - If the fix introduced **timing or async behavior** (e.g., a heartbeat probe with a delay, a polling interval, a retry timeout) — your test **MUST** wait long enough to observe the effect. Do NOT assert immediately after triggering the action.
-   - Example: if a bug was fixed by adding a heartbeat probe that runs every 5 seconds, your test must wait at least 5–10 seconds after blocking auth domains before asserting the error appears.
-   - If the bug status is `Done` or `In Testing`, the fix is deployed — **run the test against the live implementation** and expect it to pass.
+   - Example: if a bug was fixed by adding a heartbeat probe that runs every 5 seconds, your test must wait at least 5–10 seconds after the trigger before asserting the effect appears.
 4. Any other files present in the input folder for additional context.
 
 The feature code is **already implemented** in the `main` branch and **deployed**. Your job is to automate this test case — not to implement features.
 
 ## Your task
 
-1. Analyze the Test Case: understand what needs to be verified, what type it is (web, mobile, API), and which framework fits best.
-2. Check `e2e/fixtures/` and `e2e/helpers/` for existing components and utilities you can reuse.
-3. **Check if test already exists** in `e2e/tests/`. If it does, reuse and update it rather than rewriting from scratch. Only modify what is necessary.
-4. **Write the actual test code** — a REAL test file with test functions and assertions, NOT just documentation:
-   - **Go backend (ms_back)**: write `services/<service>/e2e/<feature>_e2e_test.go` with a proper `func TestMAJESENS_XXX(t *testing.T)` containing httptest requests and assertions. See `agents/instructions/test_automation/test_automation_instructions.md` for the Go httptest template.
-   - **Playwright frontend (ms_front)**: write `e2e/tests/test_{ticket_key}.spec.ts` with actual Playwright test cases.
-5. **Run the test** and capture the result.
-7. **Perform the CRITICAL VERIFICATION STEP** (see `test_automation_instructions.md` for details).
-8. Write output files.
+1. Analyze the Test Case: understand what needs to be verified, what type it is (web, API), and which framework fits.
+2. Check existing test utilities and fixtures you can reuse:
+   - **Frontend (ms_front)**: `e2e/helpers/`, `e2e/fixtures/`, existing `e2e/tests/*.spec.ts`
+   - **Backend (ms_back)**: existing `services/<service>/e2e/*_test.go` patterns
+3. **Check if the test already exists**. If it does, reuse and update it rather than rewriting from scratch. Only modify what is necessary.
+4. **Write the actual test code** — a REAL test file with test functions and assertions, NOT documentation:
+   - **Go backend (ms_back)**: `services/<service>/e2e/<feature>_e2e_test.go` with `func TestMAJESENS_XXX(t *testing.T)` using httptest requests and assertions against the running stack.
+   - **Playwright frontend (ms_front)**: `e2e/tests/test_{ticket_key}.spec.ts` with actual Playwright test cases, using `page.route()` API mocks and the helpers in `e2e/helpers/`.
 
-You may write code in these locations:
-- **Frontend Playwright tests**: `e2e/tests/` and `e2e/fixtures/`
-- **Backend Go e2e tests**: `services/<service>/e2e/<feature>_e2e_test.go`
+## IMPORTANT: Do NOT run tests
 
-## Output files
+**You do NOT execute tests.** Your job is to write test code only. GitHub Actions CI runs the tests after the PR is created.
 
-**⚠️ CRITICAL: All output files MUST be written to `outputs/` at the repository root** (e.g. `/home/runner/work/repo/repo/outputs/`).
-Do NOT write them inside `input/`, `input/TICKET-KEY/`, or any subfolder of `input/`. The post-processing script reads from `outputs/` at the repo root — writing elsewhere means all results will be silently lost.
+- Do NOT run `go test`, `npx playwright test`, `npm run test`, `vitest`, `pytest`, or any test command.
+- Do NOT report pass/fail results — CI determines the outcome.
 
-Run `mkdir -p outputs` first to ensure the directory exists.
+## IMPORTANT: Do NOT run git commands
 
-- `outputs/response.md` — test result summary in **Jira Markdown** (posted as Jira ticket comment)
-- `outputs/pr_body.md` — test result summary in **GitHub Markdown** (used as PR description)
-- `outputs/test_automation_result.json` — **MANDATORY — always write this file**, even if the test failed or errored. Use exactly this format:
-  ```json
-  { "status": "passed", "passed": 1, "failed": 0, "skipped": 0, "summary": "1 passed, 0 failed" }
-  ```
-  or for failure:
-  ```json
-  { "status": "failed", "passed": 0, "failed": 1, "skipped": 0, "summary": "0 passed, 1 failed", "error": "AssertionError: <exact error message>" }
-  ```
-  The `"status"` field **must** be exactly `"passed"` or `"failed"` (lowercase). Missing or wrong field name causes the pipeline to break.
-- `outputs/bug_description.md` — detailed bug report in Jira Markdown (only if test FAILED)
+Do NOT run `git add`, `git commit`, `git push`, or any git command. Staging, committing, pushing, and PR creation are handled automatically by the post-processing step.
 
-`response.md` and `pr_body.md` contain the same information but formatted differently — Jira MD vs GitHub MD.
+## Output files — MANDATORY
 
-## ⚠️ CRITICAL VERIFICATION STEP — Before you finish
+**⚠️ CRITICAL: All output files MUST be written to `outputs/` at the repository root.** Run `mkdir -p outputs` first. If these files are missing, the pipeline cannot publish your test — the run is wasted.
 
-You MUST verify that ALL files you claim to have created actually exist on disk. Do NOT skip this step.
+1. `outputs/response.md` — **Jira Markdown** summary of what test code was written: which test cases, their structure, how they verify the feature. Do NOT report pass/fail.
+2. `outputs/pr_body.md` — **GitHub Markdown** PR description: what was automated, approach, files added/modified. Do NOT include "Test Result: PASSED/FAILED".
 
-1. Run: `ls -la e2e/tests/test_MAJESENS-*.spec.ts` (or the path to your test file)
-2. Run: `cat e2e/tests/test_MAJESENS-*.spec.ts | head -5` — verify the file has content
-3. Run: `ls -la outputs/test_automation_result.json`
-4. Run: `cat outputs/test_automation_result.json` — verify it has `{"status": "passed"}` or `{"status": "failed"}`
+## ⚠️ VERIFICATION STEP — before you finish
 
-If any file is MISSING or EMPTY, CREATE IT NOW before finishing. Do NOT report PASSED unless the test file exists on disk and contains actual test code.
+You MUST verify that every file you claim to have created actually exists on disk:
 
-**The post-processing script will check for staged test files. If no test files exist on disk, the pipeline will fail.**
+1. `ls -la` the test file path — verify it exists and is non-empty
+2. `head -5` the test file — verify it contains real test code
+3. `ls -la outputs/` — verify `response.md` and `pr_body.md` exist
+4. If any file is MISSING or EMPTY — CREATE IT NOW before finishing.
 
-## ⚠️ CRITICAL: When the test FAILS — write a detailed bug report
+You may write code only in these locations:
+- **Frontend Playwright tests**: `e2e/tests/`, `e2e/fixtures/`
+- **Backend Go e2e tests**: `services/<service>/e2e/`
 
-If the test fails, `outputs/bug_description.md` **must** contain enough detail for a developer to reproduce and fix the bug without running the test themselves. Generic descriptions like "the test failed" or "element not found" are NOT acceptable.
-
-**Required in `bug_description.md`:**
-
-1. **Exact steps to reproduce** — copy the test steps from `request.md` and annotate each one with what actually happened:
-   - Which step passed ✅
-   - Which step failed ❌ and with what error/behaviour
-   - What was on screen / in the response at the point of failure
-
-2. **Exact error message or assertion failure** — paste the full stack trace or assertion output from the test runner, not a summary.
-
-3. **Actual vs Expected** — be specific:
-   - ❌ Bad: "the page did not load"
-   - ✅ Good: "navigating to `/v/0097a85a-a616-4708-9dbd-8c2d81d47c38/` returned HTTP 404 and rendered the home page layout instead of the video watch page"
-
-4. **Environment details** — URL, browser, OS, any relevant config values used during the run.
-
-5. **Screenshots or logs** — if Playwright, attach screenshot path; paste relevant log lines.
-
-The same level of detail applies to `response.md` — the Jira comment must clearly state **which step failed and why**, not just "FAILED".
-
-Do NOT create branches or push. Do NOT modify any feature source code outside `e2e/` and `services/*/e2e/`.
+Do NOT modify any feature source code outside those paths.

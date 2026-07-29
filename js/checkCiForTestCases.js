@@ -17,12 +17,21 @@ function action(params) {
 
     console.log('CI Check for Test Case: ' + ticketKey);
 
+    // Target repo from labels propagated from the parent Story/Bug
+    // (moveToInTesting.js copies frontend/backend/api/go/ui/react labels onto Test Cases)
+    var labels = (ticket.fields && ticket.fields.labels) || [];
+    var isBackend = labels.indexOf('backend') !== -1 ||
+                    labels.indexOf('api') !== -1 ||
+                    labels.indexOf('go') !== -1;
+    var REPO = isBackend ? 'ms_back' : 'ms_front';
+    console.log('Target repo: ' + REPO);
+
     // Find PR on test/{KEY} branch
     var branchName = 'test/' + ticketKey;
     var prInfo = null;
 
     try {
-        var openPRs = github_list_prs({ workspace: 'holodog', repository: 'ms_front', state: 'open' }) || [];
+        var openPRs = github_list_prs({ workspace: 'holodog', repository: REPO, state: 'open' }) || [];
         for (var i = 0; i < openPRs.length; i++) {
             if (openPRs[i].head && openPRs[i].head.ref === branchName) {
                 prInfo = openPRs[i];
@@ -31,7 +40,7 @@ function action(params) {
         }
 
         if (!prInfo) {
-            var closedPRs = github_list_prs({ workspace: 'holodog', repository: 'ms_front', state: 'closed' }) || [];
+            var closedPRs = github_list_prs({ workspace: 'holodog', repository: REPO, state: 'closed' }) || [];
             for (var i = 0; i < closedPRs.length; i++) {
                 if (closedPRs[i].head && closedPRs[i].head.ref === branchName && closedPRs[i].merged_at) {
                     // Already merged — CI must have passed
@@ -71,7 +80,7 @@ function action(params) {
     try {
         var rawResult = github_get_commit_check_runs({
             workspace: 'holodog',
-            repository: 'ms_front',
+            repository: REPO,
             commitSha: headSha
         });
 
