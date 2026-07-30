@@ -19,9 +19,11 @@ function action(params) {
         console.log('=== Unblock check for', ticketKey, '===');
 
         // Any backend blocker still active?
+        // "Landed" = Merged plus all post-merge lifecycle statuses (SM moves
+        // tickets Merged → Ready For Testing → In Testing → Done within cycles)
         const activeBlockers = jira_search_by_jql({
             jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype = Story' +
-                 ' AND labels in ("backend","api","go") AND status NOT IN ("Merged","Done")',
+                 ' AND labels in ("backend","api","go") AND status NOT IN ("Merged","Ready For Testing","In Testing","Done")',
             maxResults: 1
         }) || [];
 
@@ -30,10 +32,10 @@ function action(params) {
             return { success: true, action: 'waiting', ticketKey };
         }
 
-        // Sanity: at least one merged/done backend blocker must exist
+        // Sanity: at least one landed backend blocker must exist
         const mergedBlockers = jira_search_by_jql({
             jql: 'issue in linkedIssues("' + ticketKey + '") AND issuetype = Story' +
-                 ' AND labels in ("backend","api","go") AND status IN ("Merged","Done")',
+                 ' AND labels in ("backend","api","go") AND status IN ("Merged","Ready For Testing","In Testing","Done")',
             maxResults: 1
         }) || [];
 

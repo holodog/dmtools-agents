@@ -262,14 +262,17 @@ function crossRepoGuard(ticket, rule) {
                     labels.indexOf(GUARD_LABELS.NEEDS_BACKEND) !== -1;
     if (!hasMarker) return false;
 
-    // 3. Active backend blocker → stay blocked, skip dispatch
-    if (findBackendBlockers(key, 'status NOT IN ("Merged","Done")').length > 0) {
+    // 3. Active backend blocker → stay blocked, skip dispatch.
+    // "Satisfied" = PR landed: Merged and every post-merge lifecycle status
+    // (SM moves tickets Merged → Ready For Testing → In Testing → Done within
+    // cycles, so matching only Merged/Done would re-block tickets forever).
+    if (findBackendBlockers(key, 'status NOT IN ("Merged","Ready For Testing","In Testing","Done")').length > 0) {
         console.log('  ⏳ ' + key + ' waiting on active backend blocker');
         return true;
     }
 
-    // 4. Merged/Done backend blocker → dependency satisfied, dispatch normally
-    if (findBackendBlockers(key, 'status IN ("Merged","Done")').length > 0) {
+    // 4. Backend blocker landed → dependency satisfied, dispatch normally
+    if (findBackendBlockers(key, 'status IN ("Merged","Ready For Testing","In Testing","Done")').length > 0) {
         return false;
     }
 
