@@ -8,13 +8,11 @@
       "aiRole": "Senior QA Automation Engineer",
       "instructions": [
         "./agents/instructions/test_automation/test_automation_architecture.md",
-        "./agents/instructions/test_automation/test_automation_instructions.md",
-        "./agents/instructions/test_automation/test_automation_output_files.md",
-        "./agents/instructions/test_automation/test_automation_json_output.md",
+        "./agents/instructions/test_automation/new_test_automation_instructions.md",
         "./agents/instructions/tracker/jira_comment_format.md"
       ],
       "knownInfo": "",
-      "formattingRules": "./agents/instructions/test_automation/test_automation_output_files.md"
+      "formattingRules": ""
     },
     "cliPrompt": "./agents/prompts/test_case_automation_prompt.md",
     "cliCommands": [
@@ -34,7 +32,7 @@
     },
     "preJSAction": "agents/js/checkWipLabel.js",
     "preCliJSAction": "agents/js/preCliTestAutomationSetup.js",
-    "postJSAction": "agents/js/postTestAutomationResults.js",
+    "postJSAction": "agents/js/postTestAutomationWriteOnly.js",
     "inputJql": "key = JD-111",
     "cliPrompts": [
       "./agents/prompts/bash_tools.md"
