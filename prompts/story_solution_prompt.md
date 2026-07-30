@@ -19,3 +19,15 @@ If NO (pure frontend changes, existing APIs are sufficient):
 - Do NOT create `outputs/api_dependency.flag`.
 
 This flag drives automation: the frontend story will be blocked until a paired backend ticket implements the API contract.
+
+**CRITICAL — FRONTEND FOLLOW-UP DETECTION** (backend-facing stories):
+Evaluate whether the solution adds or changes backend endpoints or behavior that existing or planned UI must consume.
+
+If YES:
+1. Include a `## Frontend Follow-up` section in outputs/response.md listing which screens/flows are affected and what they consume.
+2. Write `needs_frontend` to `outputs/needs_frontend.flag` (just the label name, nothing else).
+
+If NO (internal-only change, no UI impact):
+- Do NOT create `outputs/needs_frontend.flag`.
+
+This flag drives automation: a paired frontend story is created automatically and dispatched to ms_front after this backend ticket is merged.

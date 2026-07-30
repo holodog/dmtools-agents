@@ -96,6 +96,17 @@ function action(params) {
             // No flag file — solution has no API dependency
         }
 
+        // 7c. Frontend follow-up flag → needs_frontend label (consumed by SM mirror guard)
+        try {
+            var frontendFlag = file_read('outputs/needs_frontend.flag');
+            if (frontendFlag && frontendFlag.trim()) {
+                jira_add_label({ key: ticketKey, label: LABELS.NEEDS_FRONTEND });
+                console.log('Added ' + LABELS.NEEDS_FRONTEND + ' label to ' + ticketKey);
+            }
+        } catch (e) {
+            // No flag file — solution has no frontend follow-up
+        }
+
         // 8. Remove WIP label if present
         if (wipLabel) {
             try {
