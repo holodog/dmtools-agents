@@ -85,25 +85,40 @@ function action(params) {
         // 1. Stage; commit + push only when something changed
         run('git add .');
         var statusOut = run('git status --porcelain');
-        var pushed = false;
-        if (statusOut) {
-            run('git config user.name "' + GIT_CONFIG.AUTHOR_NAME + '"');
-            run('git config user.email "' + GIT_CONFIG.AUTHOR_EMAIL + '"');
-            run('git commit -m "test(' + ticketKey + '): fix test (rework)"');
-            var pushOut = run('git push origin ' + branchName);
-            if (pushOut.indexOf('rejected') !== -1 || pushOut.indexOf('fatal') !== -1) {
-                return failWithComment('git push failed: ' + pushOut.slice(0, 400));
-            }
-            pushed = true;
-            console.log('✅ Pushed fixes to', branchName);
-        } else {
-            console.log('ℹ️ No file changes — CI will re-verify the current code');
+        if (!statusOut) {
+            // No code changes → pushing nothing cannot re-trigger CI, and
+            // retrying the same agent would burn quota in a loop. Escalate:
+            // keep the rework label (SM skips it) so a human takes over.
+            console.warn('⚠️ Rework agent produced no file changes — escalating to human');
+            try {
+                jira_post_comment({
+                    key: ticketKey,
+                    comment: 'h3. ⚠️ Test Rework Needs Human Review\n\n' +
+                        'The rework agent produced *no code changes*, so CI cannot re-verify automatically. ' +
+                        'The `sm_test_rework_triggered` label is kept to stop automated retries — ' +
+                        'inspect the test PR and the CI failures, then re-dispatch (remove the label) or fix manually.'
+                });
+            } catch (e) {}
+            return { success: false, error: 'no file changes produced', action: 'escalated_human' };
         }
+        run('git config user.name "' + GIT_CONFIG.AUTHOR_NAME + '"');
+        run('git config user.email "' + GIT_CONFIG.AUTHOR_EMAIL + '"');
+        run('git commit -m "test(' + ticketKey + '): fix test (rework)"');
+        var pushOut = run('git push origin ' + branchName);
+        if (pushOut.indexOf('rejected') !== -1 || pushOut.indexOf('fatal') !== -1) {
+            return failWithComment('git push failed: ' + pushOut.slice(0, 400));
+        }
+        console.log('✅ Pushed fixes to', branchName);
 
-        // 2. PR comment with the rework summary
+        // 2. PR comment with the rework summary (exact branch match —
+        //    title-substring matching could hit an unrelated feature PR)
         var pr = null;
         try {
-            pr = gh.findPRForTicket(repoInfo.owner, repoInfo.repo, ticketKey);
+            var openPRs = github_list_prs({ workspace: repoInfo.owner, repository: repoInfo.repo, state: 'open' }) || [];
+            var matches = openPRs.filter(function(p) {
+                return p.head && p.head.ref === branchName;
+            });
+            pr = matches.length > 0 ? matches[0] : null;
         } catch (e) {
             console.warn('PR lookup failed:', e);
         }
@@ -116,21 +131,20 @@ function action(params) {
             }
         }
 
-        // 3. Hand off to the CI verdict loop (push already re-triggered CI;
-        //    no-change case re-verifies the existing commit)
+        // 3. Hand off to the CI verdict loop (push re-triggered CI on the PR)
         jira_move_to_status({ key: ticketKey, statusName: STATUSES.CI_PENDING });
         stripReworkLabel(ticketKey);
         try {
             jira_post_comment({
                 key: ticketKey,
                 comment: 'h3. 🔧 Rework Pushed\n\n' +
-                    (pushed ? 'Fixes pushed to `' + branchName + '` — CI re-running on the test PR.\n\n' : 'No code changes — CI re-verifying the current commit.\n\n') +
+                    'Fixes pushed to `' + branchName + '` — CI re-running on the test PR.\n\n' +
                     'Verdict resolves automatically (*CI Pending* → *Passed* or back to *In Rework*).'
             });
         } catch (e) {}
 
         console.log('✅ ' + ticketKey + ' → CI Pending');
-        return { success: true, action: 'ci_pending', pushed: pushed };
+        return { success: true, action: 'ci_pending', pushed: true };
 
     } catch (error) {
         return failWithComment('Post-processing exception: ' + error.toString());

@@ -114,12 +114,18 @@ function action(params) {
         }
         console.log('✅ Pushed', branchName);
 
-        // 4. PR — reuse an existing one on this branch (idempotent on retries)
+        // 4. PR — reuse an existing one on this branch (idempotent on retries).
+        //    Exact branch match — title-substring matching could reuse an
+        //    unrelated feature PR that merely mentions the ticket key.
         var prUrl = null;
         var prNote = '';
         var existing = null;
         try {
-            existing = gh.findPRForTicket(repoInfo.owner, repoInfo.repo, ticketKey);
+            var openPRs = github_list_prs({ workspace: repoInfo.owner, repository: repoInfo.repo, state: 'open' }) || [];
+            var branchMatches = openPRs.filter(function(p) {
+                return p.head && p.head.ref === branchName;
+            });
+            existing = branchMatches.length > 0 ? branchMatches[0] : null;
         } catch (e) {
             console.warn('PR lookup failed (will try to create):', e);
         }
