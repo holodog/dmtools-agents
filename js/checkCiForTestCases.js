@@ -7,6 +7,75 @@
  *   - CI failed → "In Rework"
  */
 
+function hasAnyLabel(labels, names) {
+    for (var i = 0; i < names.length; i++) {
+        if (labels.indexOf(names[i]) !== -1) return true;
+    }
+    return false;
+}
+
+/**
+ * Resolve the target repo for a Test Case.
+ * Order: own repo labels → labels inherited from a linked Story/Bug → null.
+ * Mirrors getTargetRepo() in retryMergePR.js, but returns null instead of
+ * defaulting: a wrong default (ms_front) once moved green-CI tickets whose
+ * PR lived on ms_back to In Rework ("No Test PR Found"). null makes the
+ * caller probe both repos.
+ */
+function detectTargetRepo(ticket) {
+    var labels = ((ticket.fields && ticket.fields.labels) || []).map(function(l) {
+        return String(l).toLowerCase();
+    });
+
+    if (hasAnyLabel(labels, ['frontend', 'ui', 'react'])) return 'ms_front';
+    if (hasAnyLabel(labels, ['backend', 'api', 'go'])) return 'ms_back';
+
+    // Label propagation (moveToInTesting.js) may have missed — inherit from parent
+    if (ticket.fields && ticket.fields.issuelinks) {
+        for (var i = 0; i < ticket.fields.issuelinks.length; i++) {
+            var link = ticket.fields.issuelinks[i];
+            var linkedIssue = link.outwardIssue || link.inwardIssue;
+            if (!linkedIssue || !linkedIssue.key) continue;
+            var linkedType = (linkedIssue.fields && linkedIssue.fields.issuetype && linkedIssue.fields.issuetype.name) || '';
+            if (linkedType !== 'Story' && linkedType !== 'Bug') continue;
+            try {
+                var parent = jira_get_ticket(linkedIssue.key);
+                if (typeof parent === 'string') parent = JSON.parse(parent);
+                var parentLabels = ((parent.fields && parent.fields.labels) || []).map(function(l) {
+                    return String(l).toLowerCase();
+                });
+                if (hasAnyLabel(parentLabels, ['frontend', 'ui', 'react'])) return 'ms_front';
+                if (hasAnyLabel(parentLabels, ['backend', 'api', 'go'])) return 'ms_back';
+            } catch (e) {
+                console.warn('  ⚠️ Could not fetch linked issue ' + linkedIssue.key + ' for repo detection: ' + (e.message || e));
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Look for the test PR in one repo.
+ * Returns { pr, merged:true } | { pr } (open) | { pr, closedUnmerged:true } | null.
+ */
+function findTestPRInRepo(repo, branchName) {
+    var openPRs = github_list_prs({ workspace: 'holodog', repository: repo, state: 'open' }) || [];
+    for (var i = 0; i < openPRs.length; i++) {
+        if (openPRs[i].head && openPRs[i].head.ref === branchName) {
+            return { pr: openPRs[i] };
+        }
+    }
+    var closedPRs = github_list_prs({ workspace: 'holodog', repository: repo, state: 'closed' }) || [];
+    for (var j = 0; j < closedPRs.length; j++) {
+        if (closedPRs[j].head && closedPRs[j].head.ref === branchName) {
+            if (closedPRs[j].merged_at) return { pr: closedPRs[j], merged: true };
+            return { pr: closedPRs[j], closedUnmerged: true };
+        }
+    }
+    return null;
+}
+
 function action(params) {
     var ticket = params.ticket;
     var ticketKey = ticket && ticket.key ? ticket.key : null;
@@ -18,39 +87,42 @@ function action(params) {
     console.log('CI Check for Test Case: ' + ticketKey);
 
     // Target repo from labels propagated from the parent Story/Bug
-    // (moveToInTesting.js copies frontend/backend/api/go/ui/react labels onto Test Cases)
-    var labels = (ticket.fields && ticket.fields.labels) || [];
-    var isBackend = labels.indexOf('backend') !== -1 ||
-                    labels.indexOf('api') !== -1 ||
-                    labels.indexOf('go') !== -1;
-    var REPO = isBackend ? 'ms_back' : 'ms_front';
-    console.log('Target repo: ' + REPO);
+    // (moveToInTesting.js copies frontend/backend/api/go/ui/react labels onto Test Cases),
+    // with inheritance from the linked parent as fallback.
+    var detectedRepo = detectTargetRepo(ticket);
+    var candidateRepos = detectedRepo ? [detectedRepo] : ['ms_back', 'ms_front'];
+    console.log(detectedRepo
+        ? 'Target repo: ' + detectedRepo
+        : 'Target repo: unknown (no repo labels on ticket or parent) — probing ms_back then ms_front');
 
     // Find PR on test/{KEY} branch
     var branchName = 'test/' + ticketKey;
     var prInfo = null;
+    var prRepo = null;
 
     try {
-        var openPRs = github_list_prs({ workspace: 'holodog', repository: REPO, state: 'open' }) || [];
-        for (var i = 0; i < openPRs.length; i++) {
-            if (openPRs[i].head && openPRs[i].head.ref === branchName) {
-                prInfo = openPRs[i];
-                break;
-            }
-        }
+        for (var r = 0; r < candidateRepos.length && !prInfo; r++) {
+            var repo = candidateRepos[r];
+            var found = findTestPRInRepo(repo, branchName);
+            if (!found) continue;
 
-        if (!prInfo) {
-            var closedPRs = github_list_prs({ workspace: 'holodog', repository: REPO, state: 'closed' }) || [];
-            for (var i = 0; i < closedPRs.length; i++) {
-                if (closedPRs[i].head && closedPRs[i].head.ref === branchName && closedPRs[i].merged_at) {
-                    // Already merged — CI must have passed
-                    jira_move_to_status({ key: ticketKey, statusName: 'Passed' });
-                    jira_post_comment({
-                        key: ticketKey,
-                        comment: 'h3. ✅ CI Check — PR Already Merged\n\nTest PR for branch ' + branchName + ' was already merged. CI verified. Moved to *Passed*.'
-                    });
-                    console.log('  ✅ PR already merged → Passed');
-                    return { success: true, action: 'passed_already_merged' };
+            if (found.merged) {
+                // Already merged — CI must have passed
+                jira_move_to_status({ key: ticketKey, statusName: 'Passed' });
+                jira_post_comment({
+                    key: ticketKey,
+                    comment: 'h3. ✅ CI Check — PR Already Merged\n\nTest PR for branch ' + branchName + ' was already merged. CI verified. Moved to *Passed*.'
+                });
+                console.log('  ✅ PR already merged → Passed');
+                return { success: true, action: 'passed_already_merged' };
+            }
+
+            // Closed-unmerged PR is not a live PR — keep probing other repos
+            if (!found.closedUnmerged) {
+                prInfo = found.pr;
+                prRepo = repo;
+                if (!detectedRepo) {
+                    console.log('  ℹ️ PR found on fallback repo: ' + repo);
                 }
             }
         }
@@ -60,11 +132,11 @@ function action(params) {
     }
 
     if (!prInfo) {
-        // No PR found at all — needs re-automation
+        // No PR found in any repo — needs re-automation
         jira_move_to_status({ key: ticketKey, statusName: 'In Rework' });
         jira_post_comment({
             key: ticketKey,
-            comment: 'h3. ⚠️ CI Check — No Test PR Found\n\nNo test PR found for branch ' + branchName + '. Ticket needs re-automation. Moved to *In Rework*.'
+            comment: 'h3. ⚠️ CI Check — No Test PR Found\n\nNo test PR found for branch ' + branchName + ' (searched ' + candidateRepos.join(' and ') + '). Ticket needs re-automation. Moved to *In Rework*.'
         });
         console.log('  ⚠️ No PR found → In Rework');
         return { success: true, action: 'rework_no_pr' };
@@ -80,7 +152,7 @@ function action(params) {
     try {
         var rawResult = github_get_commit_check_runs({
             workspace: 'holodog',
-            repository: REPO,
+            repository: prRepo,
             commitSha: headSha
         });
 

@@ -35,8 +35,12 @@ function propagateRepoLabels(storyKey) {
         console.log('Repo labels on ' + storyKey + ': ' + repoLabels.join(', '));
 
         // Find all Test Cases linked to this story that have ai_generated label
-        // (newly created by TestCasesGenerator)
-        var linkedTCsRaw = jira_jql('project = MAJESENS AND issuetype = "Test Case" AND issueFunction in linkedIssuesOf("' + storyKey + '") AND labels = ai_generated');
+        // (newly created by TestCasesGenerator).
+        // NOTE: use standard Jira JQL linkedIssues() — NOT ScriptRunner's
+        // issueFunction in linkedIssuesOf(). Without ScriptRunner installed that
+        // query throws, the catch below swallows it, and labels silently never
+        // propagate (downstream CI checks then search the wrong repo).
+        var linkedTCsRaw = jira_jql('project = MAJESENS AND issuetype = "Test Case" AND issue in linkedIssues("' + storyKey + '") AND labels = ai_generated');
         var linkedTCs = (typeof linkedTCsRaw === 'string') ? JSON.parse(linkedTCsRaw) : linkedTCsRaw;
         var issues = linkedTCs.issues || linkedTCs || [];
 
