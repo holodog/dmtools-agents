@@ -3,8 +3,13 @@
  *
  * For test cases in "CI Pending" status: find the associated test PR,
  * check CI check runs on the head commit, and move the ticket accordingly:
- *   - CI passed → "Passed"
+ *   - CI passed → "In Review - Passed" (pr_test_automation_review then reviews,
+ *     adds pr_approved, and SM merges the test PR → Done)
  *   - CI failed → "In Rework"
+ *   - PR already merged → "Done"
+ *
+ * Do NOT move green CI straight to "Passed": no SM rule reads that status,
+ * so the test PR would never be reviewed or merged.
  */
 
 function hasAnyLabel(labels, names) {
@@ -107,14 +112,14 @@ function action(params) {
             if (!found) continue;
 
             if (found.merged) {
-                // Already merged — CI must have passed
-                jira_move_to_status({ key: ticketKey, statusName: 'Passed' });
+                // Already merged — test code is on master, ticket is terminal
+                jira_move_to_status({ key: ticketKey, statusName: 'Done' });
                 jira_post_comment({
                     key: ticketKey,
-                    comment: 'h3. ✅ CI Check — PR Already Merged\n\nTest PR for branch ' + branchName + ' was already merged. CI verified. Moved to *Passed*.'
+                    comment: 'h3. ✅ CI Check — PR Already Merged\n\nTest PR for branch ' + branchName + ' was already merged. Moved to *Done*.'
                 });
-                console.log('  ✅ PR already merged → Passed');
-                return { success: true, action: 'passed_already_merged' };
+                console.log('  ✅ PR already merged → Done');
+                return { success: true, action: 'done_already_merged' };
             }
 
             // Closed-unmerged PR is not a live PR — keep probing other repos
@@ -196,13 +201,14 @@ function action(params) {
             return { success: true, action: 'failed', failedChecks: failNames };
         }
 
-        // All checks passed
-        jira_move_to_status({ key: ticketKey, statusName: 'Passed' });
+        // All checks passed → hand to the review + merge track
+        // (pr_test_automation_review → pr_approved → retry_merge_test merges → Done)
+        jira_move_to_status({ key: ticketKey, statusName: 'In Review - Passed' });
         jira_post_comment({
             key: ticketKey,
-            comment: 'h3. ✅ CI Check Passed\n\nAll ' + completed.length + ' checks passed.\n\nPR: [PR #' + prInfo.number + '|' + prInfo.html_url + ']\n\nMoved to *Passed*.'
+            comment: 'h3. ✅ CI Check Passed\n\nAll ' + completed.length + ' checks passed.\n\nPR: [PR #' + prInfo.number + '|' + prInfo.html_url + ']\n\nMoved to *In Review - Passed* — automated review and merge follow.'
         });
-        console.log('  ✅ All ' + completed.length + ' checks passed → Passed');
+        console.log('  ✅ All ' + completed.length + ' checks passed → In Review - Passed');
         return { success: true, action: 'passed' };
 
     } catch (e) {
