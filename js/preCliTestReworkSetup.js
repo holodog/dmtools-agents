@@ -80,6 +80,8 @@ function action(params) {
                 try {
                     cli_execute_command({ command: 'git fetch origin ' + testBranchName + ':' + testBranchName });
                     cli_execute_command({ command: 'git checkout ' + testBranchName });
+                    // Same stale-output guard as gh.checkoutPRBranch
+                    try { cli_execute_command({ command: 'rm -rf outputs output' }); } catch (e3) {}
                     console.log('✅ Checked out branch via fetch:', testBranchName);
                 } catch (e2) {
                     console.warn('Branch checkout failed:', e2);

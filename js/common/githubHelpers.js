@@ -118,6 +118,20 @@ function checkoutPRBranch(branchName) {
         }
     }
 
+    // Remove stale agent outputs committed to the branch by older runs.
+    // `git reset --hard` restores tracked outputs/, so workflow-level cleanup
+    // cannot remove them. When the CLI agent crashes, dmtools falls back to
+    // reading outputs/response.md — a stale copy then gets post-processed as
+    // if it were fresh agent work (phantom reviews/reworks). Deleting here is
+    // safe: the agent recreates the files during the run, they are gitignored
+    // in both repos, and on branches where they were tracked the deletion is
+    // staged by the next commit, cleaning the branch.
+    try {
+        cli_execute_command({ command: 'rm -rf outputs output' });
+    } catch (e) {
+        console.warn('Could not remove stale outputs:', e);
+    }
+
     console.log('✅ Checked out branch:', branchName);
 }
 
