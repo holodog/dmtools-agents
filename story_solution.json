@@ -7,8 +7,8 @@
     "agentParams": {
       "aiRole": "Senior Software Architect",
       "instructions": [
-        "https://majesens.atlassian.net/wiki/spaces/majesens/pages/1474563/Template+Solution+Designer",
-        "https://majesens.atlassian.net/wiki/spaces/majesens/pages/1736705/Template+Jira+Markdown",
+        "https://majesens.atlassian.net/wiki/spaces/majesens/pages/655361/Template+Solution+Designer",
+        "https://majesens.atlassian.net/wiki/spaces/majesens/pages/557057/Template+Jira+Markdown",
         "./agents/instructions/common/no_development.md",
         "./agents/instructions/common/error_handling.md",
         "./agents/instructions/common/media_handling.md",
