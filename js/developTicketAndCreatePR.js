@@ -591,7 +591,7 @@ function createApiConfluencePage(ticketKey, summary, endpoints) {
 
     var html = '<h1>API Changes: ' + escHtml(ticketKey) + '</h1>';
     html += '<p>Ticket: <a href="https://majesens.atlassian.net/browse/' + ticketKey + '">' + ticketKey + '</a> — ' + escHtml(summary) + '</p>';
-    html += '<p>Central API docs: <a href="https://majesens.atlassian.net/wiki/spaces/majesens/pages/17301505/Majesens+API+Specification">Majesens API Specification</a></p>';
+    html += '<p>Central API docs: <a href="https://majesens.atlassian.net/wiki/spaces/majesens/pages/8126465/Majesens+API+Specification">Majesens API Specification</a></p>';
     html += '<h2>Endpoints</h2>';
     html += '<table><thead><tr><th>Method</th><th>Endpoint</th><th>Description</th></tr></thead><tbody>';
 
